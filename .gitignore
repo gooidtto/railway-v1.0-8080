@@ -1,0 +1,23 @@
+# Runtime state / generated credentials
+/data/
+*.log
+*.tmp
+*.bak
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Local/editor
+.DS_Store
+.idea/
+.vscode/
+
+# Generated subscription artifacts
+subscription.txt
+subscription_url.txt
+vless.txt
+reality-sni-list.txt
