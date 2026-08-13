@@ -2,3 +2,11 @@ www.cloudflare.com
 www.microsoft.com
 www.bing.com
 www.apple.com
+www.canva.com
+www.notion.so
+www.nvidia.com
+www.figma.com
+aws.amazon.com
+www.minecraft.net
+www.unrealengine.com
+www.unity.com
