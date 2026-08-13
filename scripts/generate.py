@@ -26,8 +26,8 @@ with open(tmp,'w') as f: json.dump(config,f,indent=2); f.write('\n')
 os.chmod(tmp,0o600); os.replace(tmp,config_path); data.mkdir(parents=True,exist_ok=True)
 if not (host and port): raise SystemExit('ERROR: SERVER_HOST and SERVER_PORT are required for REALITY subscription nodes')
 nodes=[]
-# HTTPS + XHTTP: Railway public HTTPS endpoint terminates TLS and forwards /xhttp to the local XHTTP inbound.
-nodes.append(f"vless://{uuid}@{public_domain}:443/?encryption={quote(encryption,safe='')}&security=tls&type=xhttp&fp={quote(fingerprint,safe='')}&sni={quote(public_domain,safe='')}&host={quote(public_domain,safe='')}&path={quote(path,safe='')}&mode={quote(mode,safe='')}#railway-https-xhttp-{public_domain}")
+# Public HTTPS + XHTTP: Railway terminates TLS at the public HTTPS edge, so the VLESS/XHTTP leg inside the container is security=none.
+nodes.append(f"vless://{uuid}@{public_domain}:443/?encryption={quote(encryption,safe='')}&security=none&type=xhttp&host={quote(public_domain,safe='')}&path={quote(path,safe='')}&mode={quote(mode,safe='')}#railway-https-xhttp-{public_domain}")
 # Railway TCP Proxy + XHTTP + REALITY: one node per verified SNI.
 for sni in pool:
     nodes.append(f"vless://{uuid}@{host}:{port}/?encryption={quote(encryption,safe='')}&security=reality&type=xhttp&fp={quote(fingerprint,safe='')}&sni={quote(sni,safe='')}&pbk={quote(public,safe='')}&sid={quote(sid,safe='')}&path={quote(path,safe='')}&mode={quote(mode,safe='')}#railway-xhttp-reality-{sni}")
