@@ -1,0 +1,4 @@
+www.cloudflare.com
+www.microsoft.com
+www.bing.com
+www.apple.com
