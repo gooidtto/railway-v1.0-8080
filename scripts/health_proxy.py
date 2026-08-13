@@ -2,9 +2,9 @@ import os,socket,threading,select
 from pathlib import Path
 from urllib.parse import urlsplit
 PORT=int(os.getenv('PORT','8080')); REALITY=('127.0.0.1',int(os.getenv('XRAY_PORT','10087'))); XHTTP=('127.0.0.1',int(os.getenv('XRAY_HTTP_PORT','10086'))); SITE=Path('/opt/xray/site'); SUB=Path(os.getenv('SUBSCRIPTION_FILE','/data/subscription.txt')); TOKEN=Path(os.getenv('SUBSCRIPTION_TOKEN_FILE','/data/subscription_token.txt')); PATH=os.getenv('XHTTP_PATH','/xhttp')
-def resp(code,typ,body):
+def resp(code,typ,body,cache='no-store'):
     b=body.encode() if isinstance(body,str) else body
-    return f'HTTP/1.1 {code}\r\nContent-Type: {typ}\r\nContent-Length: {len(b)}\r\nConnection: close\r\nCache-Control: no-store\r\n\r\n'.encode()+b
+    return f'HTTP/1.1 {code}\r\nContent-Type: {typ}\r\nContent-Length: {len(b)}\r\nConnection: close\r\nCache-Control: {cache}\r\n\r\n'.encode()+b
 def relay(a,b,initial=b''):
     if initial:b.sendall(initial)
     while True:
@@ -23,7 +23,10 @@ def handle(c):
             if path=='/health':c.sendall(resp(200,'text/plain','OK\n'));return
             if path.startswith('/sub/') and path=='/sub/'+TOKEN.read_text().strip():c.sendall(resp(200,'text/plain',SUB.read_bytes()));return
             if path==PATH or path.startswith(PATH+'/'): up=socket.create_connection(XHTTP,10); relay(c,up,d); up.close(); return
-            if path=='/': c.sendall(resp(200,'text/plain','Railway Multi-SNI REALITY\n'));return
+            if path=='/':
+                index=SITE/'index.html'
+                body=index.read_bytes() if index.is_file() else b'<!doctype html><title>Railway Edge</title><h1>Railway Edge</h1><p>Operational</p>'
+                c.sendall(resp(200,'text/html; charset=utf-8',body,'public, max-age=300'));return
             c.sendall(resp(404,'text/plain','Not Found\n'));return
         up=socket.create_connection(REALITY,10); relay(c,up,d); up.close()
     except Exception: pass
