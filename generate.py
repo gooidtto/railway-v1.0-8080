@@ -1,17 +1,14 @@
 import base64
 import os
-import secrets
 import urllib.parse
 
 PUBLIC_DOMAIN = os.environ.get("PUBLIC_DOMAIN", "railway-v10-8080-production.up.railway.app")
 UUID = os.environ.get("UUID", "9d230ff4-026a-4702-be3f-479f5bdeb3d8")
 REALITY_PUBLIC_KEY = os.environ.get("REALITY_PUBLIC_KEY", "")
 REALITY_SHORT_ID = os.environ.get("REALITY_SHORT_ID", "")
-REALITY_SNI = os.environ.get("REALITY_SNI", "www.cloudflare.com")
-REALITY_DEST = os.environ.get("REALITY_DEST", "www.cloudflare.com:443")
 XHTTP_PATH = os.environ.get("XHTTP_PATH", "/xhttp")
 
-# Only SNI values that have been confirmed by the user to work.
+# Keep only SNI values that the user has actually confirmed as working.
 SNI_LIST = [
     "www.cloudflare.com",
     "www.bing.com",
@@ -28,11 +25,11 @@ def q(params):
 
 
 def vless_xhttp_https():
-    # Railway terminates TLS at the public :443 edge. The client must therefore
-    # use TLS to the public domain, while XHTTP itself remains plain HTTP behind
-    # the Railway edge. Keep this node minimal: no REALITY, no fragment, and no
-    # client-side MUX hints are injected into the URI.
+    # TLS is terminated by Railway's public HTTPS edge. The backend hop to
+    # health_proxy/Xray is plain HTTP. Keep the public client URI minimal and
+    # do not inject fragment, REALITY, or MUX-specific parameters.
     params = {
+        "encryption": "none",
         "security": "tls",
         "sni": PUBLIC_DOMAIN,
         "type": "xhttp",
