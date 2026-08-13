@@ -14,15 +14,24 @@ def relay(a,b,initial=b''):
             d=b if s is a else a; x=s.recv(65536)
             if not x:return
             d.sendall(x)
+def request_path(d):
+    try:
+        line=d.split(b'\r\n',1)[0].decode('ascii','ignore').split(' ')
+        return urlsplit(line[1]).path if len(line)>=2 else ''
+    except Exception:
+        return ''
 def handle(c):
     try:
         c.settimeout(10); d=c.recv(16384)
         if not d:return
+        path=request_path(d)
+        # Railway HTTPS terminates TLS before this process. XHTTP traffic may use
+        # POST/GET/etc.; route every request whose path is /xhttp to Xray's XHTTP inbound.
+        if path==PATH or path.startswith(PATH+'/'):
+            up=socket.create_connection(XHTTP,10); relay(c,up,d); up.close(); return
         if d.startswith(b'GET ') or d.startswith(b'HEAD '):
-            first=d.split(b'\r\n',1)[0].decode('ascii','ignore').split(' '); path=urlsplit(first[1]).path
             if path=='/health':c.sendall(resp(200,'text/plain','OK\n'));return
             if path.startswith('/sub/') and path=='/sub/'+TOKEN.read_text().strip():c.sendall(resp(200,'text/plain',SUB.read_bytes()));return
-            if path==PATH or path.startswith(PATH+'/'): up=socket.create_connection(XHTTP,10); relay(c,up,d); up.close(); return
             if path=='/':
                 index=SITE/'index.html'
                 body=index.read_bytes() if index.is_file() else b'<!doctype html><title>Railway Edge</title><h1>Railway Edge</h1><p>Operational</p>'
