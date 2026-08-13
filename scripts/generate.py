@@ -1,7 +1,7 @@
 import base64, json, os, re
 from pathlib import Path
 from urllib.parse import quote
-from scripts.select_reality_sni import candidate_list, validated_candidates
+from select_reality_sni import candidate_list, validated_candidates
 
 def env(name, default=None, required=False):
     value=os.getenv(name,default)
