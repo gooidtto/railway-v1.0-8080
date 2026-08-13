@@ -1,4 +1,4 @@
-import base64, json, os, re
+import base64, json, os
 from pathlib import Path
 from urllib.parse import quote
 from select_reality_sni import candidate_list, validated_candidates
@@ -13,9 +13,9 @@ xray_port=int(env('XRAY_PORT','10087')); xray_http=int(env('XRAY_HTTP_PORT','100
 listen=env('XRAY_LISTEN','127.0.0.1'); host=env('SERVER_HOST',''); port=env('SERVER_PORT','')
 uuid=env('UUID',required=True); private=env('PRIVATE_KEY',required=True); public=env('PUBLIC_KEY',required=True)
 decryption=env('VLESS_DECRYPTION',required=True); encryption=env('VLESS_ENCRYPTION',required=True)
-target=env('REALITY_TARGET','www.cloudflare.com:443'); configured=env('REALITY_SNI',target.rsplit(':',1)[0])
+target=env('REALITY_TARGET','www.cloudflare.com:443')
 fingerprint=env('REALITY_FINGERPRINT','chrome'); path=env('XHTTP_PATH','/xhttp'); mode=env('XHTTP_MODE','auto'); sid=env('SHORT_ID','50175c035ee132')
-raw=validated_candidates(candidate_list()); limit=int(env('REALITY_SNI_LIMIT','12')); pool=raw[:limit]
+raw=validated_candidates(candidate_list()); limit=int(env('REALITY_SNI_LIMIT','19')); pool=raw[:limit]
 if not pool: raise SystemExit('ERROR: no REALITY SNI candidates available')
 reality={'listen':listen,'port':xray_port,'protocol':'vless','settings':{'clients':[{'id':uuid}],'decryption':decryption},'streamSettings':{'network':'xhttp','security':'reality','realitySettings':{'show':False,'target':target,'xver':0,'serverNames':pool,'privateKey':private,'shortIds':[sid]},'xhttpSettings':{'path':path,'mode':mode}}}
 https={'listen':'127.0.0.1','port':xray_http,'protocol':'vless','settings':{'clients':[{'id':uuid}],'decryption':decryption},'streamSettings':{'network':'xhttp','security':'none','xhttpSettings':{'path':path,'mode':mode}}}
