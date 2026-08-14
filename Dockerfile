@@ -18,6 +18,8 @@ COPY site/ /opt/xray/site/
 RUN chmod 0755 /usr/local/bin/xray /opt/xray/scripts/*.sh /opt/xray/scripts/*.py \
     && chmod 0644 /opt/xray/config/reality-sni-candidates.txt /opt/xray/site/*
 
+# Railway supplies PORT, RAILWAY_PUBLIC_DOMAIN and (when configured) TCP proxy values.
+# Do not hard-code any deployment-specific hostname in the image.
 ENV PORT=8080 \
     GATEWAY_PORT=8080 \
     XRAY_PORT=10087 \
@@ -34,10 +36,8 @@ ENV PORT=8080 \
     SHORT_ID=50175c035ee132 \
     REALITY_SNI_LIMIT=7 \
     REALITY_SNI_CANDIDATES_FILE=/opt/xray/config/reality-sni-candidates.txt \
-    PUBLIC_DOMAIN=railway-v10-8080-production.up.railway.app \
     SUBSCRIPTION_FILE=/data/subscription.txt \
-    SUBSCRIPTION_TOKEN_FILE=/data/subscription_token.txt \
-    PUBLIC_SUBSCRIPTION_URL=https://railway-v10-8080-production.up.railway.app
+    SUBSCRIPTION_TOKEN_FILE=/data/subscription_token.txt
 
 EXPOSE 8080 10087
 
