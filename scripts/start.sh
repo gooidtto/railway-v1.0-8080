@@ -7,7 +7,13 @@ CONFIG="${XRAY_CONFIG:-/etc/xray/config.json}"
 REALITY_TARGET="${REALITY_TARGET:-www.cloudflare.com:443}" REALITY_SNI="${REALITY_SNI:-${REALITY_TARGET%%:*}}" REALITY_FINGERPRINT="${REALITY_FINGERPRINT:-chrome}" XHTTP_PATH="${XHTTP_PATH:-/xhttp}" XHTTP_MODE="${XHTTP_MODE:-auto}" SHORT_ID="${SHORT_ID:-50175c035ee132}"
 REALITY_SNI_LIMIT="${REALITY_SNI_LIMIT:-7}"
 SERVER_HOST="${SERVER_HOST:-${XRAY_TCP_PROXY_HOST:-${RAILWAY_TCP_PROXY_DOMAIN:-}}}" SERVER_PORT="${SERVER_PORT:-${XRAY_TCP_PROXY_PORT:-${RAILWAY_TCP_PROXY_PORT:-}}}"
-PUBLIC_DOMAIN="${PUBLIC_DOMAIN:-railway-v10-8080-production.up.railway.app}"
+# Railway's injected RAILWAY_PUBLIC_DOMAIN is the authoritative Public Networking domain.
+# A manually supplied PUBLIC_DOMAIN is only a fallback for non-Railway/local execution.
+PUBLIC_DOMAIN="${RAILWAY_PUBLIC_DOMAIN:-${PUBLIC_DOMAIN:-}}"
+if [ -z "$PUBLIC_DOMAIN" ]; then
+  echo "ERROR: RAILWAY_PUBLIC_DOMAIN is unavailable; configure Railway Public Networking or set PUBLIC_DOMAIN for local execution." >&2
+  exit 1
+fi
 PUBLIC_SUBSCRIPTION_URL="${PUBLIC_SUBSCRIPTION_URL:-https://$PUBLIC_DOMAIN}"
 READY_FILE="$DATA_DIR/.xray-ready"; TOKEN_FILE="$DATA_DIR/subscription_token.txt"; UUID_FILE="$DATA_DIR/uuid.txt"; PRIV_FILE="$DATA_DIR/reality_private_key.txt"; PUB_FILE="$DATA_DIR/reality_public_key.txt"; DEC_FILE="$DATA_DIR/vless_decryption.txt"; ENC_FILE="$DATA_DIR/vless_encryption.txt"; URL_FILE="$DATA_DIR/subscription_url.txt"
 mkdir -p "$DATA_DIR" "$(dirname "$CONFIG")"; chmod 0700 "$DATA_DIR"; rm -f "$READY_FILE"
