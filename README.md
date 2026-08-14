@@ -2,23 +2,21 @@
 
 Portable Railway + Xray XHTTP/REALITY deployment derived from the verified `railway-v1.0-8080` baseline.
 
-This branch is specifically intended for:
+This branch is intended for:
 
 **Download ZIP → create a new Railway project/service → configure Public Networking + TCP Proxy + Volume → deploy.**
 
 ## Why this branch exists
 
-The original project contained deployment-specific public-domain defaults. A copied project can therefore retain an old hostname if the runtime does not replace it correctly.
+The original project contained deployment-specific public-domain defaults. A copied project could therefore retain an old hostname if the runtime did not replace it correctly.
 
-This portable branch removes that dependency from the image and makes Railway's runtime-provided values authoritative:
+This portable branch removes deployment-specific hostnames from the image and makes Railway's runtime values authoritative:
 
 - `RAILWAY_PUBLIC_DOMAIN` → current public HTTPS hostname
 - `RAILWAY_TCP_PROXY_DOMAIN` → current TCP Proxy hostname
 - `RAILWAY_TCP_PROXY_PORT` → current TCP Proxy external port
 - `PORT` → current Railway HTTP target port
 - `RAILWAY_VOLUME_MOUNT_PATH` → current persistent volume mount path
-
-Railway documents these variables as system-provided deployment variables. citeturn1search0turn1search7
 
 ## Architecture
 
@@ -55,13 +53,13 @@ The subscription contains **8 nodes**:
 
 ### 1. Create a new Railway project/service
 
-Deploy this branch/repository as a new service. Railway will build the included Dockerfile. Railway supports Dockerfile-based deployments and uses the service's configured start/deploy settings. citeturn0search5turn0search10
+Deploy this branch/repository as a new service. The included Dockerfile is used for the build.
 
 ### 2. Public Networking
 
 Generate a Railway public domain under **Settings → Networking → Public Networking**.
 
-The application must listen on Railway's injected `PORT`; this branch binds the gateway to that port and defaults to `8080` when running outside Railway. Railway explicitly requires the public application to listen on the provided `PORT`. citeturn1search7turn1search4
+The application listens on Railway's injected `PORT`; the local/default value is `8080`.
 
 ### 3. TCP Proxy
 
@@ -99,8 +97,6 @@ The runtime persists:
 /data/subscription.txt
 ```
 
-Railway volumes are runtime storage and persist across deploys/restarts. citeturn1search10
-
 ### 5. Healthcheck
 
 `railway.toml` configures:
@@ -110,13 +106,13 @@ healthcheckPath = /health
 healthcheckTimeout = 30
 ```
 
-The gateway returns `200 OK` from `/health` once the HTTP gateway is available. Railway uses healthchecks to decide whether a new deployment is ready to receive traffic. citeturn0search0turn0search2
-
-`/ready` is additionally available for diagnostics and only becomes `200` after Xray has passed its startup sequence.
+The gateway returns `200 OK` from `/health` once the HTTP gateway is available. `/ready` is additionally available for diagnostics and becomes `200` after Xray has completed its startup sequence.
 
 ## Startup behavior
 
-`start.sh` deliberately fails fast if a portable deployment does not have:
+`start.sh` deliberately fails fast if a portable deployment does not have a Railway public domain or TCP Proxy endpoint.
+
+Supported routing variables are:
 
 ```text
 RAILWAY_PUBLIC_DOMAIN
@@ -124,14 +120,15 @@ RAILWAY_TCP_PROXY_DOMAIN
 RAILWAY_TCP_PROXY_PORT
 ```
 
-The TCP Proxy values can also be supplied through the compatibility aliases already supported by the baseline:
+Compatibility aliases are also accepted:
 
 ```text
+PUBLIC_DOMAIN
 SERVER_HOST / SERVER_PORT
 XRAY_TCP_PROXY_HOST / XRAY_TCP_PROXY_PORT
 ```
 
-This is intentional. It is safer to fail with a clear startup error than to generate a subscription containing the previous Railway service's hostname or port.
+This is intentional. It is safer to fail with a clear startup error than to generate a subscription containing a previous Railway service's hostname or port.
 
 At startup the log prints only non-secret routing information:
 
@@ -221,7 +218,7 @@ After deployment, verify in this order:
 10. Client tests the REALITY/XHTTP nodes
 ```
 
-Do not treat a successful Docker build as proof of a successful runtime. Railway separates build/deploy stages, and healthchecks are evaluated after the container starts. citeturn0search5turn0search0
+Do not treat a successful Docker build as proof of a successful runtime. The build and deploy stages are separate.
 
 ## Security / repository hygiene
 
