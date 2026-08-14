@@ -42,15 +42,17 @@ fingerprint = env("REALITY_FINGERPRINT", "chrome")
 xhttp_path = env("XHTTP_PATH", "/xhttp")
 xhttp_mode = env("XHTTP_MODE", "auto")
 short_id = env("SHORT_ID", "50175c035ee132")
-# Railway injects RAILWAY_PUBLIC_DOMAIN from the service's current Public Networking configuration.
-# PUBLIC_DOMAIN remains only a fallback for local/non-Railway execution.
+# RAILWAY_PUBLIC_DOMAIN is the authoritative hostname for portable Railway deployments.
+# PUBLIC_DOMAIN is accepted only as an explicit local/manual fallback.
 public_domain = env("RAILWAY_PUBLIC_DOMAIN", "").strip() or env("PUBLIC_DOMAIN", "").strip()
 if not public_domain:
     raise SystemExit("ERROR: RAILWAY_PUBLIC_DOMAIN is unavailable; configure Railway Public Networking or set PUBLIC_DOMAIN for local execution")
 server_host = env("SERVER_HOST", "").strip()
 server_port = env("SERVER_PORT", "").strip()
 if not server_host or not server_port:
-    raise SystemExit("ERROR: SERVER_HOST and SERVER_PORT are required")
+    raise SystemExit("ERROR: SERVER_HOST and SERVER_PORT are required; configure Railway TCP Proxy")
+if not server_port.isdigit() or not 1 <= int(server_port) <= 65535:
+    raise SystemExit("ERROR: invalid SERVER_PORT")
 
 sni_file = Path(env("REALITY_SNI_CANDIDATES_FILE", "/opt/xray/config/reality-sni-candidates.txt"))
 pool = []
@@ -130,6 +132,7 @@ if len(nodes) != expected + 1:
     raise SystemExit("ERROR: subscription node count mismatch")
 
 print(f"Railway Public Domain: {public_domain}")
+print(f"TCP Proxy: {server_host}:{server_port}")
 print(f"HTTPS XHTTP node generated: {public_domain}:443")
 print(f"REALITY SNI nodes generated: {len(reality_nodes)}")
 for sni in pool:
