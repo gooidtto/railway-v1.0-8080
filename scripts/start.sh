@@ -7,13 +7,17 @@ CONFIG="${XRAY_CONFIG:-/etc/xray/config.json}"
 REALITY_TARGET="${REALITY_TARGET:-www.cloudflare.com:443}" REALITY_SNI="${REALITY_SNI:-${REALITY_TARGET%%:*}}" REALITY_FINGERPRINT="${REALITY_FINGERPRINT:-chrome}" XHTTP_PATH="${XHTTP_PATH:-/xhttp}" XHTTP_MODE="${XHTTP_MODE:-auto}" SHORT_ID="${SHORT_ID:-50175c035ee132}"
 REALITY_SNI_LIMIT="${REALITY_SNI_LIMIT:-7}"
 SERVER_HOST="${SERVER_HOST:-${XRAY_TCP_PROXY_HOST:-${RAILWAY_TCP_PROXY_DOMAIN:-}}}" SERVER_PORT="${SERVER_PORT:-${XRAY_TCP_PROXY_PORT:-${RAILWAY_TCP_PROXY_PORT:-}}}"
-# RAILWAY_PUBLIC_DOMAIN is injected from the service's current Public Networking configuration.
-# It is authoritative for generated HTTPS/SNI/Subscription URLs. PUBLIC_DOMAIN is only a local fallback.
+# Railway-provided values are authoritative on portable deployments. PUBLIC_DOMAIN is only a local/manual fallback.
 PUBLIC_DOMAIN="${RAILWAY_PUBLIC_DOMAIN:-${PUBLIC_DOMAIN:-}}"
 if [ -z "$PUBLIC_DOMAIN" ]; then
-  echo "ERROR: RAILWAY_PUBLIC_DOMAIN is unavailable; configure Railway Public Networking or set PUBLIC_DOMAIN for local execution." >&2
+  echo "ERROR: RAILWAY_PUBLIC_DOMAIN is unavailable. Generate a Railway Public Networking domain before deployment." >&2
   exit 1
 fi
+if [ -z "$SERVER_HOST" ] || [ -z "$SERVER_PORT" ]; then
+  echo "ERROR: Railway TCP Proxy host/port are unavailable. Configure the TCP Proxy before starting REALITY nodes." >&2
+  exit 1
+fi
+case "$SERVER_PORT" in *[!0-9]* ) echo "ERROR: invalid TCP proxy port: $SERVER_PORT" >&2; exit 1;; esac
 PUBLIC_SUBSCRIPTION_URL="https://$PUBLIC_DOMAIN"
 READY_FILE="$DATA_DIR/.xray-ready"; TOKEN_FILE="$DATA_DIR/subscription_token.txt"; UUID_FILE="$DATA_DIR/uuid.txt"; PRIV_FILE="$DATA_DIR/reality_private_key.txt"; PUB_FILE="$DATA_DIR/reality_public_key.txt"; DEC_FILE="$DATA_DIR/vless_decryption.txt"; ENC_FILE="$DATA_DIR/vless_encryption.txt"; URL_FILE="$DATA_DIR/subscription_url.txt"
 mkdir -p "$DATA_DIR" "$(dirname "$CONFIG")"; chmod 0700 "$DATA_DIR"; rm -f "$READY_FILE"
@@ -22,6 +26,7 @@ if [ -s "$PRIV_FILE" ] && [ -s "$PUB_FILE" ]; then PRIVATE_KEY=$(tr -d '[:space:
 if [ -s "$DEC_FILE" ] && [ -s "$ENC_FILE" ]; then VLESS_DECRYPTION=$(tr -d '[:space:]' < "$DEC_FILE"); VLESS_ENCRYPTION=$(tr -d '[:space:]' < "$ENC_FILE"); else TMP="$DATA_DIR/.vlessenc.tmp"; xray vlessenc > "$TMP" 2>&1; VLESS_DECRYPTION=$(awk '/Authentication:[[:space:]]*ML-KEM-768,[[:space:]]*Post-Quantum/ {m=1;next} m && /"decryption"[[:space:]]*:/ {line=$0;sub(/^.*"decryption"[[:space:]]*:[[:space:]]*"/,"",line);sub(/".*$/,"",line);print line;exit}' "$TMP"); VLESS_ENCRYPTION=$(awk '/Authentication:[[:space:]]*ML-KEM-768,[[:space:]]*Post-Quantum/ {m=1;next} m && /"encryption"[[:space:]]*:/ {line=$0;sub(/^.*"encryption"[[:space:]]*:[[:space:]]*"/,"",line);sub(/".*$/,"",line);print line;exit}' "$TMP"); rm -f "$TMP"; printf '%s\n' "$VLESS_DECRYPTION" > "$DEC_FILE"; printf '%s\n' "$VLESS_ENCRYPTION" > "$ENC_FILE"; fi
 if [ -s "$TOKEN_FILE" ]; then SUBSCRIPTION_TOKEN=$(tr -d '[:space:]' < "$TOKEN_FILE"); else SUBSCRIPTION_TOKEN=$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))'); printf '%s\n' "$SUBSCRIPTION_TOKEN" > "$TOKEN_FILE"; fi
 export PORT GATEWAY_PORT DATA_DIR XRAY_PORT XRAY_HTTP_PORT XRAY_LISTEN CONFIG REALITY_TARGET REALITY_SNI REALITY_FINGERPRINT XHTTP_PATH XHTTP_MODE SHORT_ID REALITY_SNI_LIMIT PUBLIC_DOMAIN UUID PRIVATE_KEY PUBLIC_KEY VLESS_DECRYPTION VLESS_ENCRYPTION SERVER_HOST SERVER_PORT SUBSCRIPTION_TOKEN XRAY_READY_FILE
+printf '%s\n' "[startup] Railway public domain: $PUBLIC_DOMAIN" "[startup] TCP proxy: $SERVER_HOST:$SERVER_PORT" "[startup] Gateway: 0.0.0.0:$GATEWAY_PORT" "[startup] Xray REALITY: $XRAY_LISTEN:$XRAY_PORT" "[startup] Xray HTTPS/XHTTP: $XRAY_LISTEN:$XRAY_HTTP_PORT"
 python3 /opt/xray/scripts/generate.py
 printf '%s/sub/%s\n' "${PUBLIC_SUBSCRIPTION_URL%/}" "$SUBSCRIPTION_TOKEN" > "$URL_FILE"
 chmod 0600 "$URL_FILE"
