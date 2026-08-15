@@ -19,8 +19,6 @@ A portable Railway deployment variant derived from the verified production basel
 <img width="1338" height="562" alt="image" src="https://github.com/user-attachments/assets/4bb8b5c0-49ec-4f2e-9a2e-0a0c397a5752" />
 
 
-# Web UI + Railway + 动态订阅生成
-
 # 核心运行链路
 
 ```text
