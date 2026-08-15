@@ -1,4 +1,4 @@
-# Web UI + Railway 首次初始化 + Xray Gateway + 动态订阅生成
+# Web UI + Railway + 动态订阅生成
 
 A portable Railway deployment variant derived from the verified production baseline.
 
@@ -16,7 +16,7 @@ Portable deployment does not depend on a Railway Template. Every Railway user/ac
 
 ---
 
-# Web UI + Railway 首次初始化 + Xray Gateway + 动态订阅生成
+# Web UI + Railway + 动态订阅生成
 
 ```text
 │
