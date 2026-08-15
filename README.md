@@ -6,6 +6,12 @@ A portable Railway deployment variant derived from the verified production basel
 
 Portable deployment does not depend on a Railway Template. Every Railway user/account can deploy this repository independently.
 
+<p align="center">
+  <a href="https://railway.com/new/github?utm_source=github&utm_medium=readme&utm_campaign=railway-portable">
+    <img src="https://railway.com/button.svg" alt="Deploy on Railway" width="260">
+  </a>
+</p>
+
 ### Recommended flow — Railway GitHub
 
 ```text
@@ -30,7 +36,7 @@ Build
 Start
 ```
 
-Railway's official GitHub deployment flow requires selecting the repository and then starting the deployment. A static GitHub README cannot force Railway's external `/new/github` page to automatically identify the repository that contains the README, so the README does not claim that the button auto-selects the current repository. citehttps://docs.railway.com/quick-start
+Railway's official GitHub deployment flow requires selecting the repository and then starting the deployment. A static GitHub README cannot force Railway's external `/new/github` page to automatically identify the repository that contains the README, so the button is intentionally the official generic Railway GitHub deployment entry point. citehttps://docs.railway.com/quick-start
 
 ### Railway page refresh note
 
