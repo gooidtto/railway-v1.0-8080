@@ -2,7 +2,7 @@
 
 A portable Railway deployment variant derived from the verified production baseline.
 
-## 🚀 Deploy on Railway
+# 🚀 Deploy on Railway
 
 Portable deployment does not depend on a Railway Template. Every Railway user/account can deploy this repository independently.
 
@@ -12,7 +12,7 @@ Portable deployment does not depend on a Railway Template. Every Railway user/ac
   </a>
 </p>
 
-Web UI + Railway 首次初始化 + Xray Gateway + 动态订阅生成
+# Web UI + Railway 首次初始化 + Xray Gateway + 动态订阅生成
 │
 ├── site/
 │   └── index.html
