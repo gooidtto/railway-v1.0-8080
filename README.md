@@ -12,55 +12,89 @@ Portable deployment does not depend on a Railway Template. Every Railway user/ac
   </a>
 </p>
 
-### Recommended flow — Railway GitHub
+### Manual deployment flow
+
+The button opens Railway's official GitHub deployment page. The following actions are intentionally manual so the user can verify the repository before deployment:
 
 ```text
-README
-  ↓
+STEP 1 — Click
 🚀 Deploy on Railway
-  ↓
-Railway login / sign up
-  ↓
-GitHub authorization
-  ↓
-Select the repository to deploy
-  ↓
-Verify Repository / Source
-  ↓
-Deploy Repo
-  ↓
-New Railway Project / Service
-  ↓
-Build
-  ↓
-Start
+
+        ↓
+
+STEP 2 — Railway
+Sign in / Sign up
+
+        ↓
+
+STEP 3 — GitHub
+Authorize / connect GitHub if requested
+
+        ↓
+
+STEP 4 — Repository
+Click the repository you intend to deploy
+
+        ↓
+
+STEP 5 — Verify
+Check that Repository / Source is the correct project
+
+        ↓
+
+STEP 6 — Deploy
+Click Deploy Repo
+
+        ↓
+
+STEP 7 — Railway
+Project / Service is created
+
+        ↓
+
+STEP 8 — Build
+Wait for the image/build to complete
+
+        ↓
+
+STEP 9 — Start
+Wait for the service to become healthy
 ```
 
-Railway's official GitHub deployment flow requires selecting the repository and then starting the deployment. A static GitHub README cannot force Railway's external `/new/github` page to automatically identify the repository that contains the README, so the button is intentionally the official generic Railway GitHub deployment entry point. citehttps://docs.railway.com/quick-start
+**Important:** do not treat the button as an automatic repository selector. The Railway page is intentionally a manual confirmation flow. This avoids silently deploying the wrong GitHub repository when an account has multiple repositories.
 
-### Railway page refresh note
+### If `Deploy Repo` does not appear after selecting the repository
 
-If the Railway page opens at:
+Railway's web UI can occasionally remain on the repository-selection view after the repository is clicked. Use this exact recovery sequence:
+
+```text
+1. Click the intended repository once.
+2. Wait a few seconds for the page to transition.
+3. If the page remains unchanged, refresh the Railway page once.
+4. Confirm Repository / Source again.
+5. Click Deploy Repo.
+```
+
+Do **not** repeatedly click the repository. The refresh is a Railway web-UI recovery step, not part of the application and not something the GitHub README can control.
+
+If the page opens directly at:
 
 ```text
 https://railway.com/new/github?utm_source=github&utm_medium=readme&utm_campaign=railway-portable
 ```
 
-and clicking the intended repository does not immediately advance to the `Deploy Repo` screen, **do not click the repository repeatedly**. Refresh the Railway page once and continue with the `Deploy Repo` step when it appears.
+that is expected: it is Railway's generic GitHub deployment entry point.
 
-This behavior occurs inside Railway's web UI after the external deployment link has already opened. The GitHub README cannot force a refresh or control Railway's client-side navigation, so it is intentionally documented as a Railway UI fallback rather than implemented as application code.
+### Optional — deploy the exact current checkout with Railway CLI
 
-### Optional — true zero-selection deployment from the current checkout
-
-If the repository is cloned locally, Railway's CLI can deploy the current directory without a repository-selection page:
+If the repository is cloned locally, Railway's CLI can deploy the current directory without the browser repository-selection flow:
 
 ```bash
+railway login
 railway up --new --yes
 ```
 
-If the user is not signed in, `railway up` opens the Railway sign-in/sign-up flow and then continues the deployment. With `--new --yes`, Railway creates a new Project + Service from the current directory and deploys it. citehttps://docs.railway.com/cli/up
-
-This is the portable branch's deterministic deployment path because it deploys the exact checkout the user has, regardless of repository name, owner, or branch name.
+This is optional; the README button above remains the primary manual deployment path.
 
 ---
 
@@ -80,7 +114,7 @@ RAILWAY_TCP_PROXY_DOMAIN
 RAILWAY_TCP_PROXY_PORT
 ```
 
-The TCP Proxy is created against application/target port `8080`. Railway generates the external proxy domain and external proxy port for the current deployment. The external port is not fixed; values such as `42827` belong only to an individual Railway deployment and must never be hard-coded. citehttps://docs.railway.com/networking/tcp-proxy
+The TCP Proxy is created against application/target port `8080`. Railway generates the external proxy domain and external proxy port for the current deployment. The external port is not fixed; values such as `42827` belong only to an individual Railway deployment and must never be hard-coded.
 
 At runtime the service consumes the current Railway values instead of storing deployment-specific hostnames or ports in the repository.
 
