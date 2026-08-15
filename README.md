@@ -4,9 +4,11 @@ A portable Railway deployment variant derived from the verified production basel
 
 ## 🚀 Deploy on Railway
 
-**Portable deployment does not depend on a Railway Template.** Every Railway user/account can deploy this repository independently.
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/new/github?utm_source=github&utm_medium=readme&utm_campaign=railway-portable)
 
-### Recommended flow — Railway GitHub
+> Click the button above to open Railway's GitHub deployment flow for this portable project.
+
+### Standard deployment flow
 
 ```text
 README
@@ -17,9 +19,9 @@ Railway login / sign up
   ↓
 GitHub authorization
   ↓
-Repository picker
+Railway GitHub repository picker
   ↓
-Select the repository currently being deployed
+Select the intended repository
   ↓
 Verify Repository / Source
   ↓
@@ -32,19 +34,24 @@ Build
 Start
 ```
 
-Railway's official GitHub deployment flow requires selecting the repository and then starting the deployment. A static GitHub README cannot force Railway's external `/new/github` page to automatically identify the repository that contains the README, so the README does **not** pretend that the generic Railway button is a current-repository auto-selector. citehttps://docs.railway.com/quick-start
+The button intentionally uses Railway's official GitHub deployment entry point:
 
-### Optional — true zero-selection deployment from the current checkout
+```text
+https://railway.com/new/github?utm_source=github&utm_medium=readme&utm_campaign=railway-portable
+```
 
-If the user has the repository cloned locally, Railway's CLI can deploy the current directory without a GitHub repository picker:
+The Railway page may require repository selection and a final `Deploy Repo` confirmation. This is the normal Railway GitHub deployment flow. The README does not claim that the external Railway page can automatically identify the current GitHub repository.
+
+### Optional CLI deployment
+
+If the repository is already cloned locally and you want to deploy the exact current checkout without using the GitHub repository picker:
 
 ```bash
+railway login
 railway up --new --yes
 ```
 
-If the user is not signed in, `railway up` opens the Railway sign-in/sign-up flow and then continues the deployment. With `--new --yes`, Railway creates a new Project + Service from the current directory and deploys it. citehttps://docs.railway.com/cli/up
-
-This is the portable branch's **deterministic deployment path** because it deploys the exact checkout the user has, regardless of repository name, owner, or branch name.
+This creates a new Railway Project + Service from the current directory.
 
 ---
 
@@ -64,7 +71,7 @@ RAILWAY_TCP_PROXY_DOMAIN
 RAILWAY_TCP_PROXY_PORT
 ```
 
-The TCP Proxy is created against application/target port `8080`. Railway generates the external proxy domain and external proxy port for the current deployment. The external port is **not fixed**; values such as `42827` belong only to an individual Railway deployment and must never be hard-coded. citehttps://docs.railway.com/networking/tcp-proxy
+The TCP Proxy is created against application/target port `8080`. Railway generates the external proxy domain and external proxy port for the current deployment. The external port is **not fixed**; values such as `42827` belong only to an individual Railway deployment and must never be hard-coded.
 
 At runtime the service consumes the current Railway values instead of storing deployment-specific hostnames or ports in the repository.
 
@@ -214,4 +221,4 @@ Keep changes isolated here until a fresh Railway deployment has passed:
 - TCP Proxy/REALITY client test
 - subscription node-count and hostname validation
 
-Only after those tests pass should the changes be considered for promotion to the production baseline.
+Only after these tests pass should the changes be considered for promotion to the production baseline.
