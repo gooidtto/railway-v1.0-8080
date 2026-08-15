@@ -21,13 +21,12 @@ A portable Railway deployment variant derived from the verified production basel
 
 # 核心运行链路
   ↓
-Deploy Repo
+# Deploy Repo
   ↓
-第一次构建 / 启动
+# 第一次构建 / 启动
   ↓
-首次会失败
+# 首次会失败
   ↓
----
 # 失败后，必须手动添加：
 
 - Generate Domain
