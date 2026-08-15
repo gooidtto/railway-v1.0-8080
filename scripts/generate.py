@@ -42,17 +42,22 @@ fingerprint = env("REALITY_FINGERPRINT", "chrome")
 xhttp_path = env("XHTTP_PATH", "/xhttp")
 xhttp_mode = env("XHTTP_MODE", "auto")
 short_id = env("SHORT_ID", "50175c035ee132")
-# RAILWAY_PUBLIC_DOMAIN is the authoritative hostname for portable Railway deployments.
-# PUBLIC_DOMAIN is accepted only as an explicit local/manual fallback.
+
+# Railway runtime values are authoritative. No deployment-specific hostname or
+# external TCP port is stored in this portable branch.
 public_domain = env("RAILWAY_PUBLIC_DOMAIN", "").strip() or env("PUBLIC_DOMAIN", "").strip()
 if not public_domain:
-    raise SystemExit("ERROR: RAILWAY_PUBLIC_DOMAIN is unavailable; configure Railway Public Networking or set PUBLIC_DOMAIN for local execution")
-server_host = env("SERVER_HOST", "").strip()
-server_port = env("SERVER_PORT", "").strip()
+    raise SystemExit("ERROR: RAILWAY_PUBLIC_DOMAIN is unavailable; generate a Railway Public Networking domain first")
+
+server_host = env("RAILWAY_TCP_PROXY_DOMAIN", "").strip() or env("SERVER_HOST", "").strip() or env("XRAY_TCP_PROXY_HOST", "").strip()
+server_port = env("RAILWAY_TCP_PROXY_PORT", "").strip() or env("SERVER_PORT", "").strip() or env("XRAY_TCP_PROXY_PORT", "").strip()
+tcp_application_port = env("RAILWAY_TCP_APPLICATION_PORT", "").strip() or env("TCP_APPLICATION_PORT", "8080").strip()
 if not server_host or not server_port:
-    raise SystemExit("ERROR: SERVER_HOST and SERVER_PORT are required; configure Railway TCP Proxy")
+    raise SystemExit("ERROR: Railway TCP Proxy domain/port are unavailable; create a TCP Proxy targeting application port 8080")
 if not server_port.isdigit() or not 1 <= int(server_port) <= 65535:
-    raise SystemExit("ERROR: invalid SERVER_PORT")
+    raise SystemExit("ERROR: invalid RAILWAY_TCP_PROXY_PORT")
+if not tcp_application_port.isdigit() or int(tcp_application_port) != 8080:
+    raise SystemExit(f"ERROR: RAILWAY_TCP_APPLICATION_PORT must be 8080, got {tcp_application_port}")
 
 sni_file = Path(env("REALITY_SNI_CANDIDATES_FILE", "/opt/xray/config/reality-sni-candidates.txt"))
 pool = []
@@ -118,9 +123,22 @@ for sni in pool:
 nodes = [https_vless] + reality_nodes
 text = "\n".join(nodes) + "\n"
 (data_dir / "vless.txt").write_text(text, encoding="utf-8")
-(data_dir / "subscription.txt").write_text(base64.b64encode(text.encode()).decode() + "\n", encoding="utf-8")
+encoded = base64.b64encode(text.encode()).decode() + "\n"
+(data_dir / "subscription.txt").write_text(encoded, encoding="utf-8")
 os.chmod(data_dir / "subscription.txt", 0o600)
 (data_dir / "reality-sni-list.txt").write_text("\n".join(pool) + "\n", encoding="utf-8")
+
+# Publish both subscription endpoints. Primary uses the public HTTPS domain;
+# fallback uses the current Railway TCP Proxy domain and its current random port.
+primary_url = f"https://{public_domain}/sub/{env('SUBSCRIPTION_TOKEN', required=True)}"
+fallback_url = f"http://{server_host}:{server_port}/sub/{env('SUBSCRIPTION_TOKEN', required=True)}"
+(data_dir / "subscription_primary_url.txt").write_text(primary_url + "\n", encoding="utf-8")
+(data_dir / "subscription_fallback_url.txt").write_text(fallback_url + "\n", encoding="utf-8")
+(data_dir / "subscription_endpoints.txt").write_text(
+    f"PRIMARY={primary_url}\nFALLBACK={fallback_url}\n", encoding="utf-8"
+)
+for path in (data_dir / "subscription_primary_url.txt", data_dir / "subscription_fallback_url.txt", data_dir / "subscription_endpoints.txt"):
+    os.chmod(path, 0o600)
 
 # Validate the generated subscription before publishing it.
 for node in nodes:
@@ -133,6 +151,9 @@ if len(nodes) != expected + 1:
 
 print(f"Railway Public Domain: {public_domain}")
 print(f"TCP Proxy: {server_host}:{server_port}")
+print(f"TCP Application Port: {tcp_application_port}")
+print(f"Primary subscription: {primary_url}")
+print(f"Fallback subscription: {fallback_url}")
 print(f"HTTPS XHTTP node generated: {public_domain}:443")
 print(f"REALITY SNI nodes generated: {len(reality_nodes)}")
 for sni in pool:
