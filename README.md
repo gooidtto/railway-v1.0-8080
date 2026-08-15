@@ -37,13 +37,13 @@ Click the repository you intend to deploy
 
         ↓
 
-STEP 5 — Verify
-Check that Repository / Source is the correct project
+STEP 5 — Refresh
+Refresh the current Railway page once
 
         ↓
 
 STEP 6 — Deploy
-Click Deploy Repo
+Deploy Repo appears → click Deploy Repo
 
         ↓
 
@@ -63,19 +63,20 @@ Wait for the service to become healthy
 
 **Important:** do not treat the button as an automatic repository selector. The Railway page is intentionally a manual confirmation flow. This avoids silently deploying the wrong GitHub repository when an account has multiple repositories.
 
-### If `Deploy Repo` does not appear after selecting the repository
+### Exact Railway browser procedure
 
-Railway's web UI can occasionally remain on the repository-selection view after the repository is clicked. Use this exact recovery sequence:
+When the Railway page opens:
 
 ```text
 1. Click the intended repository once.
-2. Wait a few seconds for the page to transition.
-3. If the page remains unchanged, refresh the Railway page once.
-4. Confirm Repository / Source again.
-5. Click Deploy Repo.
+2. Do not repeatedly click the repository.
+3. Refresh the current Railway page once.
+4. Wait for the page to reload and enter the Deploy Repo view.
+5. Confirm that the displayed Repository / Source is correct.
+6. Click Deploy Repo.
 ```
 
-Do **not** repeatedly click the repository. The refresh is a Railway web-UI recovery step, not part of the application and not something the GitHub README can control.
+The **refresh is an explicit step before `Deploy Repo`** in this portable deployment guide because the tested Railway UI may not advance immediately after the repository is selected. Do not open another Railway page or change the deployment URL; refresh the current page and continue there.
 
 If the page opens directly at:
 
