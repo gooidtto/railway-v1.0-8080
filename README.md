@@ -18,9 +18,6 @@ A portable Railway deployment variant derived from the verified production basel
 # 选择仓库并刷新网页；
 <img width="1338" height="562" alt="image" src="https://github.com/user-attachments/assets/4bb8b5c0-49ec-4f2e-9a2e-0a0c397a5752" />
 
-
-# 核心运行链路
-  ↓
 # Deploy Repo
   ↓
 # 第一次构建 / 启动
