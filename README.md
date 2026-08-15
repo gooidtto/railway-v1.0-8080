@@ -4,11 +4,9 @@ A portable Railway deployment variant derived from the verified production basel
 
 ## 🚀 Deploy on Railway
 
-[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/new/github?utm_source=github&utm_medium=readme&utm_campaign=railway-portable)
+Portable deployment does not depend on a Railway Template. Every Railway user/account can deploy this repository independently.
 
-> Click the button above to open Railway's GitHub deployment flow for this portable project.
-
-### Standard deployment flow
+### Recommended flow — Railway GitHub
 
 ```text
 README
@@ -19,9 +17,7 @@ Railway login / sign up
   ↓
 GitHub authorization
   ↓
-Railway GitHub repository picker
-  ↓
-Select the intended repository
+Select the repository to deploy
   ↓
 Verify Repository / Source
   ↓
@@ -34,24 +30,31 @@ Build
 Start
 ```
 
-The button intentionally uses Railway's official GitHub deployment entry point:
+Railway's official GitHub deployment flow requires selecting the repository and then starting the deployment. A static GitHub README cannot force Railway's external `/new/github` page to automatically identify the repository that contains the README, so the README does not claim that the button auto-selects the current repository. citehttps://docs.railway.com/quick-start
+
+### Railway page refresh note
+
+If the Railway page opens at:
 
 ```text
 https://railway.com/new/github?utm_source=github&utm_medium=readme&utm_campaign=railway-portable
 ```
 
-The Railway page may require repository selection and a final `Deploy Repo` confirmation. This is the normal Railway GitHub deployment flow. The README does not claim that the external Railway page can automatically identify the current GitHub repository.
+and clicking the intended repository does not immediately advance to the `Deploy Repo` screen, **do not click the repository repeatedly**. Refresh the Railway page once and continue with the `Deploy Repo` step when it appears.
 
-### Optional CLI deployment
+This behavior occurs inside Railway's web UI after the external deployment link has already opened. The GitHub README cannot force a refresh or control Railway's client-side navigation, so it is intentionally documented as a Railway UI fallback rather than implemented as application code.
 
-If the repository is already cloned locally and you want to deploy the exact current checkout without using the GitHub repository picker:
+### Optional — true zero-selection deployment from the current checkout
+
+If the repository is cloned locally, Railway's CLI can deploy the current directory without a repository-selection page:
 
 ```bash
-railway login
 railway up --new --yes
 ```
 
-This creates a new Railway Project + Service from the current directory.
+If the user is not signed in, `railway up` opens the Railway sign-in/sign-up flow and then continues the deployment. With `--new --yes`, Railway creates a new Project + Service from the current directory and deploys it. citehttps://docs.railway.com/cli/up
+
+This is the portable branch's deterministic deployment path because it deploys the exact checkout the user has, regardless of repository name, owner, or branch name.
 
 ---
 
@@ -71,7 +74,7 @@ RAILWAY_TCP_PROXY_DOMAIN
 RAILWAY_TCP_PROXY_PORT
 ```
 
-The TCP Proxy is created against application/target port `8080`. Railway generates the external proxy domain and external proxy port for the current deployment. The external port is **not fixed**; values such as `42827` belong only to an individual Railway deployment and must never be hard-coded.
+The TCP Proxy is created against application/target port `8080`. Railway generates the external proxy domain and external proxy port for the current deployment. The external port is not fixed; values such as `42827` belong only to an individual Railway deployment and must never be hard-coded. citehttps://docs.railway.com/networking/tcp-proxy
 
 At runtime the service consumes the current Railway values instead of storing deployment-specific hostnames or ports in the repository.
 
@@ -166,7 +169,7 @@ Do not add unverified SNI values to the portable baseline.
 
 ## Subscription structure
 
-The generated subscription contains **8 nodes**:
+The generated subscription contains 8 nodes:
 
 1. One HTTPS + TLS + XHTTP node using the current Railway public domain.
 2. Seven XHTTP + REALITY nodes using the current Railway TCP Proxy endpoint and verified SNI pool.
@@ -210,7 +213,7 @@ The repository contains generation logic and the verified SNI pool, not deployme
 
 ## Stability rule
 
-This branch is a **portable deployment variant**, not a replacement for the current production baseline.
+This branch is a portable deployment variant, not a replacement for the current production baseline.
 
 Keep changes isolated here until a fresh Railway deployment has passed:
 
@@ -221,4 +224,4 @@ Keep changes isolated here until a fresh Railway deployment has passed:
 - TCP Proxy/REALITY client test
 - subscription node-count and hostname validation
 
-Only after these tests pass should the changes be considered for promotion to the production baseline.
+Only after those tests pass should the changes be considered for promotion to the production baseline.
