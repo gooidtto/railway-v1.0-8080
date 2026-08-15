@@ -25,10 +25,9 @@ A portable Railway deployment variant derived from the verified production basel
 # 首次会失败
   ↓
 # 失败后，Settings → Networking 必须手动添加：
-- 统一使用端口：8080
-- 
+- 统一端口：8080
+  
 - Generate Domain
-
 - TCP Proxy
 
 
