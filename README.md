@@ -22,11 +22,6 @@ Portable deployment does not depend on a Railway Template. Every Railway user/ac
 │
 ├── site/
 │   └── index.html
-│       └── 1440×900 Luxury Global Dashboard
-│           ├── LONDON
-│           ├── NEW YORK
-│           ├── TOKYO
-│           └── BEIJING ← 已改
 │
 ├── scripts/
 │   └── start.sh
@@ -120,11 +115,11 @@ Xray Gateway
 
 ## Regions & Replicas
 
-这里有部署国家选择可以随时换！
+选择部署国家，可以随时更换！
 
 <img width="1368" height="786" alt="image" src="https://github.com/user-attachments/assets/c885ecdf-dfc8-439d-9dcb-058ac6d40e37" />
 
-输入完成点击左上角：Deploy
+选择完成，点击左上角：Deploy
 
 ---
 
@@ -133,7 +128,7 @@ Xray Gateway
 <img width="1447" height="748" alt="image" src="https://github.com/user-attachments/assets/9540145a-db55-4c0e-8ad9-28d729e3e5d1" />
 
 
-输入以下命令获取：
+输入以下命令获取订阅链接：
 
 ```bash
 cat /data/subscription_url.txt
