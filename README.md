@@ -94,33 +94,22 @@ generate.py
 Xray Gateway
   ↓
 正常运行
-动态地址原则
+# 第一次部署初始化后，必须手动添加：
 
-现在最重要的是不保存固定实例地址：
+Generate Domain
+TCP Proxy
+端口：8080
+<img width="759" height="233" alt="image" src="https://github.com/user-attachments/assets/88810187-bb2e-47ea-994c-547c83997e00" />
+# Scale
+Regions & Replicas
+这里有部署国家选择可以随时换！
+<img width="1368" height="786" alt="image" src="https://github.com/user-attachments/assets/c885ecdf-dfc8-439d-9dcb-058ac6d40e37" />
 
-RAILWAY_PUBLIC_DOMAIN
-        ↓
-https://<当前实例动态域名>/sub/<token>
+输入完成点击左上角：Deploy
 
-以及：
-
-RAILWAY_TCP_PROXY_DOMAIN
-RAILWAY_TCP_PROXY_PORT
-        ↓
-http://<当前实例动态TCP域名>:<当前随机端口>/sub/<token>
-
-因此：
-
-PRIMARY
-https://xxx.up.railway.app/sub/<token>
+完成整个部署，获取订阅：
+<img width="1447" height="748" alt="image" src="https://github.com/user-attachments/assets/9540145a-db55-4c0e-8ad9-28d729e3e5d1" />
 
 
-FALLBACK
-http://xxx.proxy.rlwy.net:<RANDOM>/sub/<token>
-
-这里的 xxx 和 <RANDOM> 都只是表示当前实例动态值的占位符，项目本身不写死它们。
-
-订阅：
-<img width="1098" height="203" alt="image" src="https://github.com/user-attachments/assets/4f31f732-0bbd-4894-9263-e9e5b2c54a8c" />
 输入以下命令获取：
 cat /data/subscription_url.txt
