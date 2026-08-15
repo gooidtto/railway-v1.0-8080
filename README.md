@@ -21,46 +21,7 @@ A portable Railway deployment variant derived from the verified production basel
 
 # Web UI + Railway + 动态订阅生成
 
-```text
-│
-├── site/
-│   └── index.html
-│
-├── scripts/
-│   └── start.sh
-│       ├── 检查 Railway 当前实例环境变量
-│       ├── 检查 Public Domain
-│       ├── 检查 TCP Proxy
-│       ├── 检查 TCP Proxy Port
-│       ├── 首次缺少 Networking → 明确退出
-│       └── Networking 完整 → 正常启动
-│
-├── deploy/
-│   ├── provision.sh
-│   │   └── 不使用 Railway CLI / API Token
-│   │       首次部署采用 Web UI 手动初始化
-│   │
-│   └── README.md
-│       └── 首次部署操作说明
-│
-├── generate.py
-│   └── 根据当前 Railway 实例动态生成
-│       ├── Public Domain
-│       ├── TCP Proxy Domain
-│       ├── TCP Proxy Port
-│       └── 订阅内容
-│
-├── Dockerfile
-│   └── 容器构建入口
-│
-├── railway.toml
-│   └── Railway 服务配置
-│
-└── README.md
-    └── Deploy on Railway
-```
-
-## 核心运行链路
+# 核心运行链路
 
 ```text
 README
