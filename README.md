@@ -47,16 +47,14 @@ A portable Railway deployment variant derived from the verified production basel
 
 ---
 
-完成整个部署，获取订阅：
+# 完成整个部署，获取订阅：
 
 <img width="1447" height="748" alt="image" src="https://github.com/user-attachments/assets/9540145a-db55-4c0e-8ad9-28d729e3e5d1" />
 
 
-# 项目仅作为学习使用！！！！！！
-
-
-输入以下命令获取订阅链接：
+# 输入以下命令获取订阅链接：
 
 ```bash
 cat /data/subscription_url.txt
 ```
+# 项目仅作为学习使用！！！！！！
