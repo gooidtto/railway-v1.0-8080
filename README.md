@@ -6,7 +6,7 @@ A portable Railway deployment variant derived from the verified production basel
 
 # 🚀 Deploy on Railway
 
-Portable deployment does not depend on a Railway Template. Every Railway user/account can deploy this repository independently.
+# 点击下面按钮：
 
 <p align="center">
   <a href="https://railway.com/new/github?utm_source=github&utm_medium=readme&utm_campaign=railway-portable">
@@ -15,7 +15,7 @@ Portable deployment does not depend on a Railway Template. Every Railway user/ac
 </p>
 
 ---
-# 进入后选择仓库并刷新网页；
+# 选择仓库并刷新网页；
 <img width="1338" height="562" alt="image" src="https://github.com/user-attachments/assets/4bb8b5c0-49ec-4f2e-9a2e-0a0c397a5752" />
 
 
