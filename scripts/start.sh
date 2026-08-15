@@ -16,7 +16,6 @@ SERVER_PORT="${RAILWAY_TCP_PROXY_PORT:-${SERVER_PORT:-${XRAY_TCP_PROXY_PORT:-}}}
 TCP_APPLICATION_PORT="${RAILWAY_TCP_APPLICATION_PORT:-${TCP_APPLICATION_PORT:-8080}}"
 
 READY_FILE="$DATA_DIR/.xray-ready"
-BOOTSTRAP_FILE="$DATA_DIR/bootstrap-networking-required.txt"
 TOKEN_FILE="$DATA_DIR/subscription_token.txt"
 UUID_FILE="$DATA_DIR/uuid.txt"
 PRIV_FILE="$DATA_DIR/reality_private_key.txt"
@@ -29,60 +28,78 @@ mkdir -p "$DATA_DIR" "$(dirname "$CONFIG")"
 chmod 0700 "$DATA_DIR"
 rm -f "$READY_FILE"
 
-# IMPORTANT: a fresh Railway GitHub deployment does not necessarily have
-# Public Domain / TCP Proxy resources yet. Do not crash-loop the container.
-# Keep the HTTP gateway alive so Railway can mark the service reachable and
-# the operator can create the two networking resources in Settings.
-NETWORK_BOOTSTRAP_REQUIRED=0
+# FIRST DEPLOYMENT CONTRACT
+# -------------------------
+# A fresh Railway GitHub deployment may not have the two required
+# control-plane networking resources yet. This project intentionally allows
+# that first deployment to fail fast and clearly. Do NOT fabricate a domain,
+# TCP hostname, or external port and do NOT start Xray with incomplete values.
+#
+# Required one-time Railway settings:
+#   Settings -> Networking -> Generate Domain -> application port 8080
+#   Settings -> Networking -> TCP Proxy -> application port 8080
+#
+# After both resources exist, Railway injects the current instance values and
+# the operator manually clicks Deploy/Redeploy again. The normal startup path
+# then generates the runtime identity/configuration and starts all services.
+NETWORK_MISSING=0
 if [ -z "$PUBLIC_DOMAIN" ]; then
-  NETWORK_BOOTSTRAP_REQUIRED=1
+  echo "[first-deploy] REQUIRED: Railway Public Domain is not configured." >&2
+  NETWORK_MISSING=1
 fi
-if [ -z "$SERVER_HOST" ] || [ -z "$SERVER_PORT" ]; then
-  NETWORK_BOOTSTRAP_REQUIRED=1
+if [ -z "$SERVER_HOST" ]; then
+  echo "[first-deploy] REQUIRED: Railway TCP Proxy domain is not configured." >&2
+  NETWORK_MISSING=1
+fi
+if [ -z "$SERVER_PORT" ]; then
+  echo "[first-deploy] REQUIRED: Railway TCP Proxy external port is not configured." >&2
+  NETWORK_MISSING=1
 fi
 case "$TCP_APPLICATION_PORT" in
-  *[!0-9]* ) NETWORK_BOOTSTRAP_REQUIRED=1 ;;
+  *[!0-9]* )
+    echo "[first-deploy] REQUIRED: RAILWAY_TCP_APPLICATION_PORT must be 8080; got: $TCP_APPLICATION_PORT" >&2
+    NETWORK_MISSING=1
+    ;;
 esac
 if [ "$TCP_APPLICATION_PORT" != "8080" ]; then
-  NETWORK_BOOTSTRAP_REQUIRED=1
+  echo "[first-deploy] REQUIRED: TCP Proxy target/application port must be 8080; got: $TCP_APPLICATION_PORT" >&2
+  NETWORK_MISSING=1
 fi
 
-if [ "$NETWORK_BOOTSTRAP_REQUIRED" = "1" ]; then
-  cat > "$BOOTSTRAP_FILE" <<EOF
-Railway networking bootstrap is required before Xray can start.
+if [ "$NETWORK_MISSING" = "1" ]; then
+  cat >&2 <<'EOF'
 
-Required control-plane resources:
-  Public Domain -> application port 8080
-  TCP Proxy     -> application port 8080
+============================================================
+RAILWAY FIRST-DEPLOYMENT NETWORKING REQUIRED
+============================================================
 
-Expected Railway runtime variables after networking is configured:
+This first deployment is intentionally allowed to fail.
+The application will NOT invent or reuse an old Railway domain/port.
+
+Before the next Deploy/Redeploy, configure BOTH resources in Railway:
+
+1. Settings -> Networking -> Generate Domain
+   Target/application port: 8080
+   Result: <current>.up.railway.app
+
+2. Settings -> Networking -> TCP Proxy
+   Target/application port: 8080
+   Result: <current>.proxy.rlwy.net:<Railway-assigned-port>
+
+Then click Deploy/Redeploy again.
+
+The next deployment must provide:
   RAILWAY_PUBLIC_DOMAIN
   RAILWAY_TCP_PROXY_DOMAIN
   RAILWAY_TCP_PROXY_PORT
   RAILWAY_TCP_APPLICATION_PORT=8080
 
-This container intentionally remains alive in bootstrap mode instead of
-crash-looping. /health remains available; /ready remains NOT READY.
-After Railway networking is created, redeploy/restart the service so the
-new Railway-provided variables are injected into the process.
+Only after those values are present will Xray, subscriptions, and the
+8-node runtime configuration be generated.
+============================================================
 EOF
-  chmod 0600 "$BOOTSTRAP_FILE"
-
-  echo "[bootstrap] Railway networking is not ready; Xray startup is deferred."
-  echo "[bootstrap] Generate Domain targeting 8080 and create TCP Proxy targeting 8080."
-  echo "[bootstrap] Required variables: RAILWAY_PUBLIC_DOMAIN, RAILWAY_TCP_PROXY_DOMAIN, RAILWAY_TCP_PROXY_PORT, RAILWAY_TCP_APPLICATION_PORT=8080"
-  echo "[bootstrap] Keeping HTTP gateway alive on 0.0.0.0:$GATEWAY_PORT so /health remains available."
-  echo "[bootstrap] After networking is created, redeploy/restart this service."
-
-  export PORT GATEWAY_PORT DATA_DIR XRAY_PORT XRAY_HTTP_PORT XRAY_LISTEN CONFIG XRAY_READY_FILE
-  python3 /opt/xray/scripts/health_proxy.py & HEALTH_PID=$!
-  cleanup_bootstrap(){ rm -f "$READY_FILE"; kill "${HEALTH_PID:-}" 2>/dev/null || true; wait "${HEALTH_PID:-}" 2>/dev/null || true; }
-  trap cleanup_bootstrap INT TERM EXIT
-  wait "$HEALTH_PID"
-  exit 0
+  exit 1
 fi
-
-rm -f "$BOOTSTRAP_FILE"
 
 case "$SERVER_PORT" in
   *[!0-9]* ) echo "ERROR: invalid TCP proxy port: $SERVER_PORT" >&2; exit 1 ;;
