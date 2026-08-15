@@ -14,33 +14,53 @@ A portable Railway deployment variant derived from the verified production basel
 
 The README intentionally does **not** hard-code a GitHub repository name or branch name. If this repository is renamed, forked, copied, or moved, the deployment instructions remain valid.
 
-Click **Deploy this repository on Railway** to open Railway's official GitHub deployment flow. Railway handles sign-in and GitHub authorization in the browser. The repository that appears there is determined by the GitHub repositories you grant Railway access to.
+Click **Deploy this repository on Railway** to open Railway's official GitHub deployment flow. Railway handles sign-in and GitHub authorization in the browser. Railway's documented GitHub flow requires the Railway account to be linked to GitHub before a repository can be selected for deployment. citehttps://docs.railway.com/quick-start
 
-For least-privilege access, when GitHub asks where to install/configure the Railway GitHub App, choose **Only select repositories** and grant access only to the repository containing this README. This avoids exposing unrelated repositories to Railway. Railway's GitHub integration requires the Railway account to be linked to GitHub before a GitHub repository can be selected for deployment. citehttps://docs.railway.com/quick-start
+For least-privilege access, when GitHub asks where to install/configure the Railway GitHub App, choose **Only select repositories** and grant access only to the repository containing this README. This keeps unrelated repositories outside Railway's GitHub access scope.
 
-> **Important:** a static Markdown README cannot read its own GitHub repository name or branch and inject those values into an external Railway URL. Therefore this button deliberately uses Railway's supported GitHub entry point instead of embedding a stale owner/repository/branch. Do not replace it with a hard-coded repository URL if this project is copied or renamed.
+> **Important:** a static Markdown README cannot read its own GitHub repository name or branch and inject those values into an external Railway URL. Therefore the button deliberately uses Railway's supported GitHub entry point instead of embedding a stale owner/repository/branch. Do not replace it with a hard-coded repository URL if this project is copied or renamed.
 
-### Recommended first-time flow
+### Recommended browser flow
+
+The intended deployment interaction is **verify first, deploy second**:
 
 ```text
-README button
-    ↓
+README
+  ↓
+Deploy this repository on Railway
+  ↓
 Railway
-    ↓
+  ↓
 Sign in / create account if needed
-    ↓
-Connect GitHub if needed
-    ↓
-GitHub App: Only select repositories
-    ↓
-Grant access to THIS repository only
-    ↓
-Railway GitHub repository picker
-    ↓
-Deploy the repository containing this README
+  ↓
+Connect / authorize GitHub if needed
+  ↓
+GitHub App access: Only select repositories
+  ↓
+Grant Railway access only to the repository containing this README
+  ↓
+Railway detects the repositories available to the connected GitHub account
+  ↓
+Identify the repository you intend to deploy
+  ↓
+CLICK the matching repository
+  ↓
+VERIFY the repository name / source shown by Railway
+  ↓
+CLICK **Deploy Repo**
+  ↓
+Railway creates the project/service
+  ↓
+Initial deployment starts
 ```
 
-Railway's documented GitHub flow is: create a project, choose Deploy from GitHub, connect GitHub if necessary, select the repository, and deploy. citehttps://docs.railway.com/quick-start
+The important safety point is that **`Deploy Repo` is the final confirmation action**. Do not click it until the repository shown by Railway is the intended repository. Railway's GitHub deployment documentation describes selecting the repository and then using the deployment action to start the initial build/deploy. citehttps://docs.railway.com/quick-start
+
+The README does not assume that the repository has a particular name. The repository displayed by Railway is the source of truth for that deployment session.
+
+### If GitHub access shows too many repositories
+
+The deployment button cannot itself change GitHub App permissions. If Railway can see more repositories than intended, stop before `Deploy Repo` and change the Railway GitHub App installation to **Only select repositories**, granting access only to the repository you intend to deploy. Then return to the Railway deployment flow and verify the repository shown before clicking `Deploy Repo`.
 
 ### If you want zero repository-selection ambiguity
 
@@ -53,7 +73,7 @@ railway up --new --yes
 
 `railway up --new` creates a new project and service from the **current directory**, so it naturally deploys the repository you are currently working in and does not require choosing from your GitHub repository list. Railway documents that `railway up` can sign you in first and that `--new` creates a new project and service from the current directory. citehttps://docs.railway.com/cli/up
 
-This is the most reliable repository-adaptive path when the repository has been renamed or copied.
+This is the most deterministic repository-adaptive path when the repository has been renamed or copied.
 
 ---
 
@@ -92,7 +112,7 @@ The subscription contains **8 nodes**:
 
 ### 1. Deploy the repository
 
-Use the button above, or use the CLI from the repository directory:
+Use the button above and verify the detected repository before clicking **Deploy Repo**, or use the CLI from the repository directory:
 
 ```bash
 railway login
