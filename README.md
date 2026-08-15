@@ -29,6 +29,8 @@ Deploy Repo
   ↓
 首次会失败
   ↓
+```text
+---
 # 失败后，必须手动添加：
 
 - Generate Domain
