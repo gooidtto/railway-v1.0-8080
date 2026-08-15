@@ -20,8 +20,6 @@ A portable Railway deployment variant derived from the verified production basel
 
 
 # 核心运行链路
-
-```text
   ↓
 Deploy Repo
   ↓
@@ -29,7 +27,6 @@ Deploy Repo
   ↓
 首次会失败
   ↓
-```text
 ---
 # 失败后，必须手动添加：
 
