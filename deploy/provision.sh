@@ -3,10 +3,11 @@ set -euo pipefail
 
 # One-command Railway provisioning for the portable deployment.
 #
-# The first deployment may fail its application startup because the fresh
-# service has no generated public domain/TCP proxy yet. That is expected.
-# This script then creates the control-plane resources and performs a final
-# redeploy, after which start.sh can consume the Railway-generated variables.
+# Fresh GitHub deployments now enter a network-bootstrap mode when the
+# Railway-generated Public Domain / TCP Proxy are not available yet. The
+# container keeps /health available instead of crash-looping. This helper can
+# then create the control-plane networking resources and perform a redeploy,
+# after which start.sh consumes the Railway-generated variables normally.
 #
 # No public hostname or TCP proxy external port is hard-coded.
 #
@@ -30,8 +31,9 @@ command -v python3 >/dev/null 2>&1 || { echo "[provision] ERROR: python3 is requ
 
 if [[ "$CREATE_NEW" == "1" ]]; then
   echo "[provision] Creating a new Railway project/service and initial deployment..."
-  # The initial container may exit because the new service has no networking
-  # resources yet. Do not abort before provisioning those resources.
+  # The portable container stays alive in network-bootstrap mode when the
+  # fresh service has no domain/TCP proxy yet, so this command can complete
+  # and provisioning can continue.
   set +e
   railway up --new --yes
   INITIAL_STATUS=$?
@@ -139,7 +141,7 @@ railway variable list --json >/tmp/railway-variables.json 2>/dev/null || true
 
 echo "[provision] Provisioning complete."
 python3 - <<'PY'
-import json, os
+import json
 try:
     d=json.load(open('/tmp/railway-domain.json',encoding='utf-8'))
     print('  Public domain:', d.get('domain') or d.get('url') or d)
