@@ -22,48 +22,14 @@ A portable Railway deployment variant derived from the verified production basel
 # 核心运行链路
 
 ```text
-README
-  ↓
-🚀 Deploy on Railway
-  ↓
-Railway Repository Picker
   ↓
 Deploy Repo
   ↓
 第一次构建 / 启动
   ↓
-缺少 Networking
+首次会失败
   ↓
-允许第一次失败
-  ↓
-Settings → Networking
-  │
-  ├── Generate Domain
-  │      Target Port = 8080
-  │
-  └── TCP Proxy
-         Target Port = 8080
-  ↓
-Railway 动态生成
-  │
-  ├── *.up.railway.app
-  │
-  └── *.proxy.rlwy.net:*
-  ↓
-Deploy / Redeploy
-  ↓
-start.sh
-  ↓
-generate.py
-  ↓
-Xray Gateway
-  ↓
-正常运行
-```
-
----
-
-# 第一次部署初始化后，必须手动添加：
+# 失败后，必须手动添加：
 
 - Generate Domain
 - TCP Proxy
