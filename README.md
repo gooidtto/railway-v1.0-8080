@@ -1,4 +1,4 @@
-# Portable Railway + Xray XHTTP/REALITY
+# Web UI + Railway 首次初始化 + Xray Gateway + 动态订阅生成
 
 A portable Railway deployment variant derived from the verified production baseline.
 
@@ -11,8 +11,6 @@ Portable deployment does not depend on a Railway Template. Every Railway user/ac
     <img src="https://railway.com/button.svg" alt="Deploy on Railway" width="260">
   </a>
 </p>
-
-# “Web UI + Railway 首次初始化 + Xray Gateway + 动态订阅生成” 四层：
 
 Web UI + Railway 首次初始化 + Xray Gateway + 动态订阅生成
 │
