@@ -2,78 +2,55 @@
 
 A portable Railway deployment variant derived from the verified production baseline.
 
-## 🚀 Deploy this repository on Railway
+## 🚀 One-click Railway deployment
 
-<p align="center">
-  <a href="https://railway.com/new/github?utm_source=github&utm_medium=readme&utm_campaign=railway-portable">
-    <img src="https://railway.com/button.svg" alt="Deploy this repository on Railway" width="260">
-  </a>
-</p>
+**Target deployment model: Railway Template.**
 
-### Repository-adaptive deployment
+Railway Templates are the correct mechanism for a true one-click deployment because the Template stores the service source and infrastructure configuration. Railway can configure the service source, variables, public networking/TCP Proxy, healthcheck, and volume in the Template itself. citehttps://docs.railway.com/templates/create
 
-The README intentionally does **not** hard-code a GitHub repository name or branch name. If this repository is renamed, forked, copied, or moved, the deployment instructions remain valid.
+> **Template status:** this repository is Template-ready, but the final Railway Template URL is created once in the Railway workspace UI. Railway currently does not support importing a `template.json` file or creating a Template through a public template-management API. See [`deploy/RAILWAY_TEMPLATE_SETUP.md`](deploy/RAILWAY_TEMPLATE_SETUP.md).
 
-Click **Deploy this repository on Railway** to open Railway's official GitHub deployment flow. Railway handles sign-in and GitHub authorization in the browser. Railway's documented GitHub flow requires the Railway account to be linked to GitHub before a repository can be selected for deployment. citehttps://docs.railway.com/quick-start
+After the one-time Template is created, the README button should use the Railway-provided Template URL in this form:
 
-For least-privilege access, when GitHub asks where to install/configure the Railway GitHub App, choose **Only select repositories** and grant access only to the repository containing this README. This keeps unrelated repositories outside Railway's GitHub access scope.
+```markdown
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/<RAILWAY-TEMPLATE-SLUG>)
+```
 
-> **Important:** a static Markdown README cannot read its own GitHub repository name or branch and inject those values into an external Railway URL. Therefore the button deliberately uses Railway's supported GitHub entry point instead of embedding a stale owner/repository/branch. Do not replace it with a hard-coded repository URL if this project is copied or renamed.
+Railway documents that the Template page provides the Template URL and a ready-made **Deploy on Railway** button for README files. citehttps://docs.railway.com/templates/publish-and-share
 
-### Recommended browser flow
-
-The intended deployment interaction is **verify first, deploy second**:
+### Intended end-user flow
 
 ```text
 README
   ↓
-Deploy this repository on Railway
+Deploy on Railway
   ↓
-Railway
+Railway login / account creation if needed
   ↓
-Sign in / create account if needed
+Template configuration / confirmation
   ↓
-Connect / authorize GitHub if needed
+Deploy
   ↓
-GitHub App access: Only select repositories
+New Railway Project
   ↓
-Grant Railway access only to the repository containing this README
+Service + configured infrastructure
   ↓
-Railway detects the repositories available to the connected GitHub account
-  ↓
-Identify the repository you intend to deploy
-  ↓
-CLICK the matching repository
-  ↓
-VERIFY the repository name / source shown by Railway
-  ↓
-CLICK **Deploy Repo**
-  ↓
-Railway creates the project/service
-  ↓
-Initial deployment starts
+Initial deployment
 ```
 
-The important safety point is that **`Deploy Repo` is the final confirmation action**. Do not click it until the repository shown by Railway is the intended repository. Railway's GitHub deployment documentation describes selecting the repository and then using the deployment action to start the initial build/deploy. citehttps://docs.railway.com/quick-start
+This removes the ambiguous GitHub repository picker from the normal deployment path. Railway's Template deployment flow creates a new project containing the configured Template service(s). citehttps://docs.railway.com/templates/deploy
 
-The README does not assume that the repository has a particular name. The repository displayed by Railway is the source of truth for that deployment session.
+### Temporary fallback before the Template URL exists
 
-### If GitHub access shows too many repositories
+Until the one-time Railway Template is created, the official GitHub deployment entry point remains available:
 
-The deployment button cannot itself change GitHub App permissions. If Railway can see more repositories than intended, stop before `Deploy Repo` and change the Railway GitHub App installation to **Only select repositories**, granting access only to the repository you intend to deploy. Then return to the Railway deployment flow and verify the repository shown before clicking `Deploy Repo`.
+<p align="center">
+  <a href="https://railway.com/new/github?utm_source=github&utm_medium=readme&utm_campaign=railway-portable">
+    <img src="https://railway.com/button.svg" alt="Deploy from GitHub on Railway" width="260">
+  </a>
+</p>
 
-### If you want zero repository-selection ambiguity
-
-Use the repository's own local checkout with the Railway CLI instead of the GitHub picker:
-
-```bash
-railway login
-railway up --new --yes
-```
-
-`railway up --new` creates a new project and service from the **current directory**, so it naturally deploys the repository you are currently working in and does not require choosing from your GitHub repository list. Railway documents that `railway up` can sign you in first and that `--new` creates a new project and service from the current directory. citehttps://docs.railway.com/cli/up
-
-This is the most deterministic repository-adaptive path when the repository has been renamed or copied.
+If using this fallback, verify the repository shown by Railway before clicking **Deploy Repo**. For least-privilege GitHub access, use **Only select repositories** and grant Railway access only to the repository being deployed.
 
 ---
 
@@ -110,24 +87,28 @@ The subscription contains **8 nodes**:
 
 ## Portable deployment checklist
 
-### 1. Deploy the repository
+### 1. Deploy the Template
 
-Use the button above and verify the detected repository before clicking **Deploy Repo**, or use the CLI from the repository directory:
+Use the published Railway Template button once its Template URL has been created. For the one-time maintainer setup, follow [`deploy/RAILWAY_TEMPLATE_SETUP.md`](deploy/RAILWAY_TEMPLATE_SETUP.md).
+
+For local/CLI deployment, Railway supports:
 
 ```bash
 railway login
 railway up --new --yes
 ```
 
+`railway up --new` creates a new project and service from the current directory. citehttps://docs.railway.com/cli/up
+
 ### 2. Public Networking
 
-Generate a Railway public domain for the deployed service. Railway provides the current runtime value through `RAILWAY_PUBLIC_DOMAIN`.
+The Template should have Public Networking configured. Railway provides the current runtime value through `RAILWAY_PUBLIC_DOMAIN`.
 
 The application listens on Railway's injected `PORT`; the local/default target is `8080`.
 
 ### 3. TCP Proxy
 
-Create the Railway TCP Proxy for the service with **application/target port `8080`**.
+The Template should create the Railway TCP Proxy with **application/target port `8080`**.
 
 The runtime automatically reads:
 
@@ -143,7 +124,7 @@ The generated REALITY subscription nodes therefore follow the **new Railway serv
 
 ### 4. Persistent Volume
 
-Attach a Railway Volume at:
+The Template should attach a Railway Volume at:
 
 ```text
 /data
@@ -228,6 +209,7 @@ Do not add unverified SNI values to the portable baseline.
 ├── deploy/
 │   ├── provision.sh
 │   ├── verify.sh
+│   ├── RAILWAY_TEMPLATE_SETUP.md
 │   └── README.md
 ├── scripts/
 │   ├── generate.py
