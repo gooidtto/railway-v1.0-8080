@@ -1,106 +1,105 @@
-# Portable Railway provisioning
+# Portable Railway deployment helpers
 
-This directory handles the Railway control-plane part of a fresh deployment. It is intentionally separate from the container runtime.
+This directory documents the Railway control-plane prerequisites for the portable deployment. The supported first-deployment flow is intentionally browser-based; no local computer, Railway CLI, or Railway API token is required.
 
-## Goal
-
-A fresh Railway service should end up with:
-
-- Railway-generated `*.up.railway.app` public domain targeting **8080**
-- Railway-generated TCP Proxy targeting **application port 8080**
-- Railway-generated TCP proxy hostname and random external port
-- persistent `/data` volume
-- runtime-generated primary and fallback subscription URLs
-
-No public hostname or external TCP port is hard-coded.
-
-## One-command flow
-
-Prerequisites:
+## Supported first-deployment flow
 
 ```text
-Railway CLI
-curl
-Python 3
-RAILWAY_API_TOKEN
+README
+  ↓
+Deploy on Railway
+  ↓
+Select repository
+  ↓
+Deploy Repo
+  ↓
+First deployment may fail
+  ↓
+Settings → Networking → Generate Domain
+  target/application port = 8080
+  ↓
+Settings → Networking → TCP Proxy
+  target/application port = 8080
+  ↓
+Railway generates:
+  <current>.up.railway.app
+  <current>.proxy.rlwy.net:<RANDOM>
+  ↓
+Click Deploy / Redeploy again
+  ↓
+Normal startup
 ```
 
-The API token is used only by the local provisioning script to call Railway's public GraphQL API. Do not put it in the repository or in the Docker image.
+The first failure is expected when the service has not yet received Railway networking resources. `scripts/start.sh` fails fast with an explicit message instead of inventing a hostname/port or reusing an old deployment value.
 
-From the repository root:
+## Fixed target vs dynamic values
 
-```bash
-bash deploy/provision.sh --new
+Fixed:
+
+```text
+Gateway / Public Domain target = 8080
+TCP Proxy application target   = 8080
 ```
 
-The provisioning script:
-
-1. creates a fresh Railway project/service and performs the initial deployment;
-2. generates the Railway public domain on port `8080`;
-3. creates/uses persistent storage at `/data`;
-4. creates a TCP Proxy with `applicationPort=8080`;
-5. redeploys so the container receives the newly generated Railway networking variables;
-6. prints the Railway-generated TCP proxy domain and random external port.
-
-Railway's public API supports service-domain creation, and Railway's TCP Proxy assigns its own proxy domain and external port while the caller supplies only the application port. The runtime exposes those generated values through Railway variables. citeturn0search1turn0search0turn0search9
-
-## Runtime values
-
-The container uses these Railway-provided values as authoritative:
+Dynamic per Railway deployment:
 
 ```text
 RAILWAY_PUBLIC_DOMAIN
 RAILWAY_TCP_PROXY_DOMAIN
 RAILWAY_TCP_PROXY_PORT
-RAILWAY_TCP_APPLICATION_PORT
 ```
 
-Expected target:
+`RAILWAY_TCP_PROXY_PORT` is assigned by Railway and must never be hard-coded. A value such as `42827` belongs only to one historical deployment.
+
+## Runtime values
+
+After the manual networking steps and the next Deploy/Redeploy, the container consumes:
 
 ```text
+RAILWAY_PUBLIC_DOMAIN
+RAILWAY_TCP_PROXY_DOMAIN
+RAILWAY_TCP_PROXY_PORT
 RAILWAY_TCP_APPLICATION_PORT=8080
 ```
 
-The external TCP proxy port is **not fixed** and must never be set to an example such as `42827`.
+Only then does `scripts/start.sh` generate the runtime identity/configuration and subscription endpoints.
 
-## Subscription endpoints
-
-After startup the persistent volume contains:
+## Subscription contract
 
 ```text
-/data/subscription_primary_url.txt
-/data/subscription_fallback_url.txt
-/data/subscription_endpoints.txt
+PRIMARY
+https://<current Railway public domain>/sub/<current token>
+
+FALLBACK
+http://<current Railway TCP proxy domain>:<current Railway TCP proxy port>/sub/<current token>
 ```
 
-The runtime generates:
+The placeholders above are documentation notation only. The running instance replaces them with the current Railway-generated values.
 
-```text
-PRIMARY=https://<current Railway public domain>/sub/<current token>
-FALLBACK=http://<current Railway TCP proxy domain>:<current Railway TCP proxy port>/sub/<current token>
-```
-
-The seven REALITY/XHTTP nodes also use the current Railway TCP proxy domain and current Railway-assigned external port.
+The seven REALITY/XHTTP nodes use the current TCP Proxy domain and current Railway-assigned external port.
 
 ## Verification
 
-After the deployment is healthy:
+After the second deployment becomes healthy, verify:
 
-```bash
-bash deploy/verify.sh
+```text
+1. Public Domain exists and targets 8080
+2. TCP Proxy exists and targets 8080
+3. TCP Proxy external port is Railway-generated
+4. /health returns 200
+5. /ready returns 200
+6. Subscription returns 8 nodes
+7. Primary uses the current *.up.railway.app domain
+8. Fallback uses the current *.proxy.rlwy.net:<random-port>
+9. HTTPS/XHTTP client node works
+10. REALITY/XHTTP client nodes work
 ```
 
-The verification checks `/health`, `/ready`, and the expected Railway networking values when supplied in the environment.
-
-## Important separation
-
-`deploy/provision.sh` runs on the operator's machine/CI and talks to Railway's control plane.
-
-`scripts/start.sh` runs inside the container and consumes the values Railway has already generated.
-
-This separation is intentional: provisioning belongs to Railway CLI/API; runtime discovery belongs to the application.
+Use `deploy/verify.sh` only as an optional post-deployment diagnostic. It is not required to start the application.
 
 ## Security
+
+The application does not require a Railway API token.
 
 Never commit:
 
