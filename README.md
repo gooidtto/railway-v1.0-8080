@@ -1,80 +1,63 @@
-# railway-v1.0-8080-portable
+# Portable Railway + Xray XHTTP/REALITY
 
-Portable Railway + Xray XHTTP/REALITY deployment derived from the verified `railway-v1.0-8080` baseline.
+A portable Railway deployment variant derived from the verified production baseline.
 
-## 🚀 Deploy this repository to Railway
+## 🚀 Deploy this repository on Railway
 
 <p align="center">
-  <a href="https://railway.com/new/github?utm_source=github&utm_medium=readme&utm_campaign=railway-v1-0-8080-portable">
-    <img src="https://railway.com/button.svg" alt="Deploy on Railway" width="260">
+  <a href="https://railway.com/new/github?utm_source=github&utm_medium=readme&utm_campaign=railway-portable">
+    <img src="https://railway.com/button.svg" alt="Deploy this repository on Railway" width="260">
   </a>
 </p>
 
-### Recommended: authorize only this repository
+### Repository-adaptive deployment
 
-To avoid a large GitHub repository list and prevent accidentally deploying the wrong project, **do not give Railway access to all repositories**.
+The README intentionally does **not** hard-code a GitHub repository name or branch name. If this repository is renamed, forked, copied, or moved, the deployment instructions remain valid.
 
-When Railway asks you to install/connect the Railway GitHub App, choose:
+Click **Deploy this repository on Railway** to open Railway's official GitHub deployment flow. Railway handles sign-in and GitHub authorization in the browser. The repository that appears there is determined by the GitHub repositories you grant Railway access to.
 
-```text
-Repository access
-→ Only select repositories
-→ gooidtto/railway-v1.0-8080
-```
+For least-privilege access, when GitHub asks where to install/configure the Railway GitHub App, choose **Only select repositories** and grant access only to the repository containing this README. This avoids exposing unrelated repositories to Railway. Railway's GitHub integration requires the Railway account to be linked to GitHub before a GitHub repository can be selected for deployment. citehttps://docs.railway.com/quick-start
 
-This makes the Railway repository picker effectively single-repository: Railway can only see the repository you explicitly authorized. Railway's documented GitHub deployment flow requires a linked GitHub account, then lets you choose the repository and start the deployment. citeturn0search0turn0search3
+> **Important:** a static Markdown README cannot read its own GitHub repository name or branch and inject those values into an external Railway URL. Therefore this button deliberately uses Railway's supported GitHub entry point instead of embedding a stale owner/repository/branch. Do not replace it with a hard-coded repository URL if this project is copied or renamed.
 
-### Then select the portable branch
+### Recommended first-time flow
 
 ```text
-Repository:
-go​​oidtto/railway-v1.0-8080
-
-Branch:
-railway-v1.0-8080-portable
+README button
+    ↓
+Railway
+    ↓
+Sign in / create account if needed
+    ↓
+Connect GitHub if needed
+    ↓
+GitHub App: Only select repositories
+    ↓
+Grant access to THIS repository only
+    ↓
+Railway GitHub repository picker
+    ↓
+Deploy the repository containing this README
 ```
 
-Then click **Deploy Now**.
+Railway's documented GitHub flow is: create a project, choose Deploy from GitHub, connect GitHub if necessary, select the repository, and deploy. citehttps://docs.railway.com/quick-start
 
-> **Important:** the Railway button itself cannot reliably bypass GitHub authorization or force an arbitrary private repository/branch through an undocumented URL parameter. The supported least-privilege solution is to authorize **only this repository** in the GitHub App. That removes unrelated repositories from the deployment picker while keeping Railway's official authentication flow. citeturn0search0
+### If you want zero repository-selection ambiguity
 
-### If Railway is already connected to GitHub
+Use the repository's own local checkout with the Railway CLI instead of the GitHub picker:
 
-You may still need to change the Railway GitHub App installation to:
-
-```text
-Only select repositories
-✓ gooidtto/railway-v1.0-8080
+```bash
+railway login
+railway up --new --yes
 ```
 
-Do not select all repositories.
+`railway up --new` creates a new project and service from the **current directory**, so it naturally deploys the repository you are currently working in and does not require choosing from your GitHub repository list. Railway documents that `railway up` can sign you in first and that `--new` creates a new project and service from the current directory. citehttps://docs.railway.com/cli/up
 
-### After the initial deployment
-
-The project still needs the Railway networking resources required by this portable variant:
-
-- Public Domain → Railway-generated `*.up.railway.app`
-- TCP Proxy → **application/target port `8080`**
-- Volume → `/data`
-
-The repository includes `deploy/provision.sh` for the Railway control-plane provisioning path and `deploy/verify.sh` for post-deployment checks. See [`deploy/README.md`](deploy/README.md).
+This is the most reliable repository-adaptive path when the repository has been renamed or copied.
 
 ---
 
-## Why this branch exists
-
-The original project contained deployment-specific public-domain defaults. A copied project could therefore retain an old hostname if the runtime did not replace it correctly.
-
-This portable branch removes deployment-specific hostnames from the image and makes Railway's runtime values authoritative:
-
-- `RAILWAY_PUBLIC_DOMAIN` → current public HTTPS hostname
-- `RAILWAY_TCP_PROXY_DOMAIN` → current TCP Proxy hostname
-- `RAILWAY_TCP_PROXY_PORT` → current TCP Proxy external port
-- `RAILWAY_TCP_APPLICATION_PORT` → current TCP Proxy target/application port; expected `8080`
-- `PORT` → current Railway HTTP target port
-- `RAILWAY_VOLUME_MOUNT_PATH` → current persistent volume mount path
-
-## Architecture
+## Portable deployment architecture
 
 ```text
                     Railway Public Networking
@@ -107,15 +90,20 @@ The subscription contains **8 nodes**:
 
 ## Portable deployment checklist
 
-### 1. Create a new Railway project/service
+### 1. Deploy the repository
 
-Use the **Deploy on Railway** button above. If GitHub access is requested, authorize Railway for **only** `gooidtto/railway-v1.0-8080`, then select the `railway-v1.0-8080-portable` branch and click **Deploy Now**. Railway's documented GitHub flow creates a new project and starts the initial deployment. citeturn0search0
+Use the button above, or use the CLI from the repository directory:
+
+```bash
+railway login
+railway up --new --yes
+```
 
 ### 2. Public Networking
 
-Generate a Railway public domain under **Settings → Networking → Public Networking**.
+Generate a Railway public domain for the deployed service. Railway provides the current runtime value through `RAILWAY_PUBLIC_DOMAIN`.
 
-The application listens on Railway's injected `PORT`; the local/default value is `8080`.
+The application listens on Railway's injected `PORT`; the local/default target is `8080`.
 
 ### 3. TCP Proxy
 
@@ -141,55 +129,30 @@ Attach a Railway Volume at:
 /data
 ```
 
-The runtime persists:
-
-```text
-/data/uuid.txt
-/data/reality_private_key.txt
-/data/reality_public_key.txt
-/data/vless_decryption.txt
-/data/vless_encryption.txt
-/data/subscription_token.txt
-/data/subscription_url.txt
-/data/subscription_primary_url.txt
-/data/subscription_fallback_url.txt
-/data/subscription_endpoints.txt
-/data/subscription.txt
-```
+The runtime persists generated identity, key, encryption and subscription material under `/data`.
 
 ### 5. Healthcheck
 
-`railway.toml` configures:
+`railway.toml` configures the deployment healthcheck. The gateway exposes `/health` and `/ready` for diagnostics.
 
-```text
-healthcheckPath = /health
-healthcheckTimeout = 30
-```
+---
 
-The gateway returns `200 OK` from `/health` once the HTTP gateway is available. `/ready` is additionally available for diagnostics and becomes `200` after Xray has completed its startup sequence.
+## Runtime discovery
 
-## Startup behavior
+No deployment-specific Railway hostname or TCP external port is hard-coded in this portable variant.
 
-`start.sh` deliberately fails fast if a portable deployment does not have a Railway public domain or TCP Proxy endpoint.
-
-Supported routing variables are:
+Runtime values are authoritative:
 
 ```text
 RAILWAY_PUBLIC_DOMAIN
 RAILWAY_TCP_PROXY_DOMAIN
 RAILWAY_TCP_PROXY_PORT
 RAILWAY_TCP_APPLICATION_PORT
+PORT
+RAILWAY_VOLUME_MOUNT_PATH
 ```
 
-Compatibility aliases are also accepted:
-
-```text
-PUBLIC_DOMAIN
-SERVER_HOST / SERVER_PORT
-XRAY_TCP_PROXY_HOST / XRAY_TCP_PROXY_PORT
-```
-
-This is intentional. It is safer to fail with a clear startup error than to generate a subscription containing a previous Railway service's hostname or port.
+The TCP Proxy target/application port must resolve to the project's fixed Gateway target of `8080`; the public hostname and TCP Proxy external port are generated per Railway deployment.
 
 At startup the log prints only non-secret routing information:
 
@@ -202,6 +165,25 @@ At startup the log prints only non-secret routing information:
 ```
 
 Private keys, UUIDs and subscription tokens are never printed.
+
+## Subscription endpoints
+
+After startup, the current subscription endpoints are written under `/data`:
+
+```text
+subscription_primary_url.txt
+subscription_fallback_url.txt
+subscription_endpoints.txt
+```
+
+They are generated from the current instance values:
+
+```text
+PRIMARY=https://<CURRENT-RAILWAY-PUBLIC-DOMAIN>/sub/<CURRENT-TOKEN>
+FALLBACK=http://<CURRENT-RAILWAY-TCP-PROXY-DOMAIN>:<CURRENT-RAILWAY-TCP-PROXY-PORT>/sub/<CURRENT-TOKEN>
+```
+
+The seven REALITY/XHTTP nodes also use the current Railway TCP Proxy domain and current Railway-assigned external port.
 
 ## Verified SNI pool
 
@@ -237,41 +219,6 @@ Do not add unverified SNI values to the portable baseline.
 ├── railway.toml
 └── README.md
 ```
-
-## Configuration ownership
-
-`deploy/provision.sh` owns the Railway control-plane provisioning workflow.
-
-`deploy/verify.sh` owns post-deployment validation.
-
-`start.sh` owns runtime discovery and persistent material.
-
-`generate.py` owns Xray configuration and subscription generation.
-
-`health_proxy.py` owns the HTTP gateway and TCP forwarding.
-
-`railway.toml` owns deployment healthcheck/restart configuration.
-
-`Dockerfile` contains no deployment-specific Railway hostname or TCP external port.
-
-## Subscription
-
-After a successful startup, the current subscription endpoints are written to:
-
-```text
-/data/subscription_primary_url.txt
-/data/subscription_fallback_url.txt
-/data/subscription_endpoints.txt
-```
-
-The runtime generates:
-
-```text
-PRIMARY=https://<CURRENT-RAILWAY-PUBLIC-DOMAIN>/sub/<CURRENT-TOKEN>
-FALLBACK=http://<CURRENT-RAILWAY-TCP-PROXY-DOMAIN>:<CURRENT-RAILWAY-TCP-PROXY-PORT>/sub/<CURRENT-TOKEN>
-```
-
-The seven REALITY/XHTTP nodes also use the current Railway TCP Proxy domain and current Railway-assigned external port.
 
 ## First deployment validation
 
@@ -320,4 +267,4 @@ Keep changes isolated here until a fresh Railway deployment has passed:
 - TCP Proxy/REALITY client test
 - subscription node-count and hostname validation
 
-Only after those tests pass should the changes be considered for promotion to `main`.
+Only after those tests pass should the changes be considered for promotion to the production baseline.
