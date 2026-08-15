@@ -2,9 +2,7 @@
 
 Portable Railway + Xray XHTTP/REALITY deployment derived from the verified `railway-v1.0-8080` baseline.
 
-## 🚀 Deploy to Railway
-
-**Recommended:** use Railway's official GitHub deployment flow. It handles Railway sign-in and GitHub authorization in the browser, then lets you select this repository and deploy it as a new project/service.
+## 🚀 Deploy this repository to Railway
 
 <p align="center">
   <a href="https://railway.com/new/github?utm_source=github&utm_medium=readme&utm_campaign=railway-v1-0-8080-portable">
@@ -12,17 +10,44 @@ Portable Railway + Xray XHTTP/REALITY deployment derived from the verified `rail
   </a>
 </p>
 
-### What happens when you click the button
+### Recommended: authorize only this repository
 
-1. Railway opens the GitHub deployment flow.
-2. If you are not signed in, Railway asks you to sign in/sign up.
-3. If GitHub is not connected to Railway, Railway asks you to connect/authorize GitHub.
-4. Select **`gooidtto/railway-v1.0-8080`**.
-5. Select branch **`railway-v1.0-8080-portable`**.
-6. Click **Deploy Now**.
-7. Railway creates the project/service and starts the Docker deployment.
+To avoid a large GitHub repository list and prevent accidentally deploying the wrong project, **do not give Railway access to all repositories**.
 
-> **Important:** the button opens Railway's supported GitHub deployment screen. Railway must have permission to access the repository before it can deploy it. The button does not bypass Railway's GitHub authorization or repository selection step.
+When Railway asks you to install/connect the Railway GitHub App, choose:
+
+```text
+Repository access
+→ Only select repositories
+→ gooidtto/railway-v1.0-8080
+```
+
+This makes the Railway repository picker effectively single-repository: Railway can only see the repository you explicitly authorized. Railway's documented GitHub deployment flow requires a linked GitHub account, then lets you choose the repository and start the deployment. citeturn0search0turn0search3
+
+### Then select the portable branch
+
+```text
+Repository:
+go​​oidtto/railway-v1.0-8080
+
+Branch:
+railway-v1.0-8080-portable
+```
+
+Then click **Deploy Now**.
+
+> **Important:** the Railway button itself cannot reliably bypass GitHub authorization or force an arbitrary private repository/branch through an undocumented URL parameter. The supported least-privilege solution is to authorize **only this repository** in the GitHub App. That removes unrelated repositories from the deployment picker while keeping Railway's official authentication flow. citeturn0search0
+
+### If Railway is already connected to GitHub
+
+You may still need to change the Railway GitHub App installation to:
+
+```text
+Only select repositories
+✓ gooidtto/railway-v1.0-8080
+```
+
+Do not select all repositories.
 
 ### After the initial deployment
 
@@ -35,10 +60,6 @@ The project still needs the Railway networking resources required by this portab
 The repository includes `deploy/provision.sh` for the Railway control-plane provisioning path and `deploy/verify.sh` for post-deployment checks. See [`deploy/README.md`](deploy/README.md).
 
 ---
-
-This branch is intended for:
-
-**Download ZIP → create a new Railway project/service → configure Public Networking + TCP Proxy + Volume → deploy.**
 
 ## Why this branch exists
 
@@ -88,7 +109,7 @@ The subscription contains **8 nodes**:
 
 ### 1. Create a new Railway project/service
 
-Use the **Deploy on Railway** button above, then choose this repository and the `railway-v1.0-8080-portable` branch.
+Use the **Deploy on Railway** button above. If GitHub access is requested, authorize Railway for **only** `gooidtto/railway-v1.0-8080`, then select the `railway-v1.0-8080-portable` branch and click **Deploy Now**. Railway's documented GitHub flow creates a new project and starts the initial deployment. citeturn0search0
 
 ### 2. Public Networking
 
