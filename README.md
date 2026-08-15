@@ -24,11 +24,13 @@ A portable Railway deployment variant derived from the verified production basel
   ↓
 # 首次会失败
   ↓
-# 失败后，必须手动添加：
-
+# 失败后，Settings → Networking 必须手动添加：
+- 统一使用端口：8080
+- 
 - Generate Domain
+
 - TCP Proxy
-- 端口：8080
+
 
 <img width="759" height="233" alt="image" src="https://github.com/user-attachments/assets/88810187-bb2e-47ea-994c-547c83997e00" />
 
