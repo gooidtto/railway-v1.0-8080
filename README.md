@@ -1,6 +1,6 @@
 # Railway Portable Runtime — 8080 Gateway
 
-这是一个面向新 Railway 项目的可移植母版。仓库不保存任何旧项目的 Railway 域名、随机 TCP Proxy 端口或实例 ID；容器启动时从 Railway 运行时环境重新发现这些值，并重新生成当前实例的路由、Xray 配置和 **4 节点订阅**。
+这是一个面向新 Railway 项目的可移植母版。仓库不保存任何旧项目的 Railway 域名、随机 TCP Proxy 端口或实例 ID；容器启动时从 Railway 运行时环境重新发现这些值，并重新生成当前实例的运行时路由、Xray 配置和 4 节点订阅。
 
 ## Railway 控制面：只需要 2 个公网资源
 
@@ -27,7 +27,9 @@ Railway 会自动产生当前实例的：
 
 容器通过 Railway 运行时变量动态读取它们；随机域名、随机 TCP external port 和实例 ID 不进入源代码。
 
-## Runtime 架构
+## 最终运行时架构
+
+公网只有两个入口，内部 Xray 端口全部动态化：
 
 ```text
                          Railway
@@ -37,28 +39,115 @@ Railway 会自动产生当前实例的：
        Generate Domain                 TCP Proxy
        *.up.railway.app             *.proxy.rlwy.net
        Target = 8080                Target = 8080
-             │                       :random-port
+       :443                          :random-port
              │                             │
              └──────────────┬──────────────┘
                             ▼
                      Gateway :8080
+                     固定 / 唯一公网目标
                             │
-              ┌─────────────┼─────────────┐
-              │             │             │
-           HTTP/TLS       TLS SNI        TCP
-              │             │             │
-              ▼             ▼             ▼
-           10086          10087         10085 / 10088
-           XHTTP/TLS      XHTTP          Vision / gRPC
-                          REALITY        REALITY
-
-127.0.0.1:10087  VLESS + XHTTP + REALITY
-127.0.0.1:10086  VLESS + XHTTP + TLS
-127.0.0.1:10085  VLESS + RAW/TCP + REALITY + Vision
-127.0.0.1:10088  VLESS + gRPC + REALITY
+             ┌──────────────┼──────────────┐
+             │              │              │
+        SNI=CF          SNI=Canva       SNI=Epic
+             │              │              │
+             ▼              ▼              ▼
+       XHTTP REALITY   Vision REALITY   gRPC REALITY
+       127.0.0.1       127.0.0.1       127.0.0.1
+       :动态端口        :动态端口        :动态端口
 ```
 
-四个 Xray inbound 都只监听 `127.0.0.1`。公网只暴露 Railway 提供的 `$PORT` Gateway。一个 TCP Proxy 通过 TLS ClientHello 的 SNI 在三个 REALITY inbound 之间分流。
+HTTPS Generate Domain 另外提供：
+
+```text
+Railway Domain :443
+        ↓
+Gateway :8080
+        ↓
+XHTTP + TLS
+127.0.0.1:<动态端口>
+```
+
+### 端口职责
+
+| 层级 | 端口 | 是否固定 | 公网可见 |
+|---|---:|---|---|
+| Railway Generate Domain | 443 | Railway 管理 | 是 |
+| Railway TCP Proxy | 随机 | Railway 管理 | 是 |
+| Gateway | 8080 | **固定** | 仅作为 Railway Target |
+| XHTTP + REALITY | 动态 localhost | **每次启动重新分配** | 否 |
+| XHTTP + TLS | 动态 localhost | **每次启动重新分配** | 否 |
+| Vision + REALITY | 动态 localhost | **每次启动重新分配** | 否 |
+| gRPC + REALITY | 动态 localhost | **每次启动重新分配** | 否 |
+
+客户端永远不会看到 Xray 的 localhost 端口。
+
+## Runtime Manifest：唯一事实来源
+
+所有运行时端口由 `port_allocator.py` 一次生成，然后写回：
+
+```text
+/data/runtime.json
+```
+
+随后由同一份 runtime state 驱动：
+
+```text
+runtime.json
+   │
+   ├── xray-config-generator
+   │        ↓
+   │     Xray listeners
+   │
+   ├── gateway-router
+   │        ↓
+   │     SNI → localhost port
+   │
+   └── subscription-generator
+            ↓
+         Railway public endpoint
+```
+
+因此不存在：
+
+```text
+Xray 自己随机一次
+Gateway 再随机一次
+Subscription 再随机一次
+```
+
+而是：
+
+```text
+allocate once
+     ↓
+shared manifest/runtime
+     ↓
+Xray + Gateway + Subscription
+```
+
+### 动态端口示例
+
+第一次启动：
+
+```text
+Gateway              :8080
+XHTTP REALITY        127.0.0.1:18321
+Vision REALITY       127.0.0.1:24173
+gRPC REALITY         127.0.0.1:31642
+XHTTP TLS            127.0.0.1:15491
+```
+
+下一次启动可以变成：
+
+```text
+Gateway              :8080
+XHTTP REALITY        127.0.0.1:28731
+Vision REALITY       127.0.0.1:15427
+gRPC REALITY         127.0.0.1:32764
+XHTTP TLS            127.0.0.1:19243
+```
+
+客户端完全不需要知道这些变化，因为公网仍然只连接当前 Railway Domain 或 TCP Proxy。
 
 ## 四层 Runtime Pipeline
 
@@ -69,6 +158,11 @@ Railway Runtime
 ┌─────────────────────────────┐
 │ runtime-discovery.py        │
 │ 当前 Domain / TCP Port / ID │
+└──────────────┬──────────────┘
+               ▼
+┌─────────────────────────────┐
+│ port_allocator.py           │
+│ 动态 localhost Xray ports   │
 └──────────────┬──────────────┘
                ▼
 ┌─────────────────────────────┐
@@ -89,7 +183,9 @@ Railway Runtime
              Xray
 ```
 
-### 1. runtime-discovery
+`port_allocator.py` 是运行时内部资源分配层；公网 Railway discovery 与协议配置仍保持职责分离。
+
+## 1. runtime-discovery
 
 读取当前 Railway 实例的：
 
@@ -111,22 +207,50 @@ Railway Runtime
 /data/runtime.json
 ```
 
-任何旧 Railway 域名、随机端口、实例 ID 都不会作为配置常量保存。
+如果没有同时发现 Generate Domain、TCP Proxy Domain/Port，启动会拒绝进入 READY 状态。
 
-### 2. xray-config-generator
+## 2. port-allocator
 
-生成四个本地 inbound：
+保持 Gateway `8080` 固定；为 4 个 Xray inbound 在 `127.0.0.1` 上动态分配互不重复的 TCP 端口：
 
 ```text
-10087  VLESS + XHTTP + REALITY
-10086  VLESS + XHTTP + TLS
-10085  VLESS + RAW/TCP + REALITY + Vision
-10088  VLESS + gRPC + REALITY
+xhttp_reality
+xhttp_tls
+vision_reality
+grpc_reality
 ```
 
-UUID、REALITY key、Short ID 等身份保存到 `/data`；Railway 网络地址与身份完全分离。
+端口每次进程启动重新选择，不写入客户端订阅，也不作为公网接口。
 
-### 3. subscription-generator
+## 3. xray-config-generator
+
+从 `/data/runtime.json` 读取动态 listener ports，生成：
+
+```text
+VLESS + XHTTP + REALITY
+VLESS + XHTTP + TLS
+VLESS + RAW/TCP + REALITY + Vision
+VLESS + gRPC + REALITY
+```
+
+UUID、REALITY key、Short ID 等身份保存到 `/data`；Railway 网络地址与 Xray 身份完全分离。
+
+REALITY profile 要求：
+
+```text
+SNI == serverNames == camouflage target hostname
+```
+
+并且 XHTTP、Vision、gRPC 三组 SNI 必须互斥。重复 SNI 或缺失协议池会阻止启动，而不是产生一个错误路由的“假稳定”实例。
+
+生成的 `/data/xray-manifest.json` 同时记录：
+
+- 当前 UUID / public key / short ID
+- 三组 REALITY profile
+- 当前动态 localhost listener ports
+- XHTTP / gRPC transport 参数
+
+## 4. subscription-generator
 
 每个协议只产生 **1 个节点**，总计 **4 个节点**：
 
@@ -137,7 +261,20 @@ UUID、REALITY key、Short ID 等身份保存到 `/data`；Railway 网络地址�
 ④ VLESS + gRPC + REALITY
 ```
 
-REALITY SNI 候选池只是内部 failover/candidate pool，不会把一个协议扩展成多个订阅节点。
+公网节点只使用：
+
+```text
+Generate Domain :443
+TCP Proxy Domain :Railway random port
+```
+
+绝不会把：
+
+```text
+127.0.0.1:<dynamic-port>
+```
+
+写入订阅。
 
 主要输出：
 
@@ -145,21 +282,74 @@ REALITY SNI 候选池只是内部 failover/candidate pool，不会把一个协�
 /data/vless.txt
 /data/subscription.txt
 /data/subscription_endpoints.txt
+/data/subscription_url.txt
 ```
 
-### 4. gateway-router
+## 5. gateway-router
 
-统一监听 `$PORT`，负责：
+统一监听 `0.0.0.0:8080`，读取 `/data/runtime.json` + `/data/xray-manifest.json` 建立唯一 route table，负责：
 
 - `/health`
 - `/ready`
 - `/sub/<token>`
 - 静态网站
-- Railway HTTPS → XHTTP/TLS inbound
-- REALITY TLS ClientHello SNI → XHTTP / Vision / gRPC inbound
-- opaque TCP → Vision inbound
+- Railway HTTPS → XHTTP/TLS
+- REALITY TLS ClientHello SNI → 对应 XHTTP / Vision / gRPC inbound
 
-Gateway 不终止 REALITY TLS，只做首包分类和 TCP relay。未知 REALITY SNI 不会错误地回落到 HTTPS/XHTTP inbound。
+Gateway 不终止 REALITY TLS，只做首包分类和 TCP relay。
+
+未知 REALITY SNI 会明确拒绝：
+
+```text
+reject unknown TLS SNI=...
+```
+
+不会再把未知 TLS 错误回落到 Vision。
+
+Gateway 还输出入口诊断：
+
+```text
+accepted peer=...
+initial ...
+tls sni=... route=... target=...
+```
+
+因此可以直接判断故障位于：
+
+```text
+Railway → Gateway
+Gateway → Xray
+Xray REALITY
+Client subscription
+```
+
+## 启动顺序
+
+```text
+START
+  ↓
+runtime-discovery
+  ↓
+port-allocator
+  ↓
+xray-config-generator
+  ↓
+subscription-generator
+  ↓
+xray -test
+  ↓
+启动 Xray
+  ↓
+等待 4 个动态 localhost listeners
+  ↓
+启动 Gateway :8080
+  ↓
+Gateway bind/readiness
+  ↓
+READY
+```
+
+如果任意一个 Xray listener 无法启动，Gateway 不会进入 READY。
 
 ## 部署流程
 
@@ -180,6 +370,8 @@ runtime-discovery
       ↓
 自动发现当前 Domain + 随机 TCP Port
       ↓
+动态分配 localhost Xray ports
+      ↓
 自动生成 Xray 4 inbound
       ↓
 自动生成 4 节点订阅
@@ -191,7 +383,7 @@ Gateway + Xray ready
 
 Custom Domain 只是可选扩展，不是四协议运行的前置条件。
 
-## 身份持久化
+## 身份与网络状态分离
 
 挂载 Railway Volume 后，以下身份跨重新部署保留：
 
@@ -205,7 +397,9 @@ Custom Domain 只是可选扩展，不是四协议运行的前置条件。
 /data/subscription_token.txt
 ```
 
-Railway 域名或 TCP Proxy 随机端口变化时，只重新发现并生成 runtime/config/subscription，不因为网络地址变化而重新生成身份。
+Railway Domain、TCP Proxy external port 和 Xray localhost listener ports 属于运行时网络状态；其中前两者由 Railway 发现，最后一组由 `port_allocator.py` 每次启动重新分配。
+
+身份不会因为内部端口变化而重新生成。
 
 ## Runtime 状态检查
 
@@ -213,13 +407,26 @@ Railway 域名或 TCP Proxy 随机端口变化时，只重新发现并生成 run
 cat /data/runtime.json
 cat /data/xray-manifest.json
 cat /data/subscription_endpoints.txt
+cat /data/subscription_url.txt
 cat /data/vless.txt
+```
+
+重点检查：
+
+```text
+railway.public_domain
+railway.tcp_proxy_domain
+railway.tcp_proxy_port
+listeners.gateway
+listeners.xhttp_reality
+listeners.xhttp_tls
+listeners.vision_reality
+listeners.grpc_reality
 ```
 
 ## 可选变量
 
 ```text
-REALITY_TARGET=www.cloudflare.com:443
 REALITY_FINGERPRINT=chrome
 XHTTP_PATH=/xhttp
 XHTTP_MODE=auto
@@ -228,7 +435,7 @@ CUSTOM_DOMAIN=<可选>
 GRPC_DOMAIN=<可选>
 ```
 
-`CUSTOM_DOMAIN` / `GRPC_DOMAIN` 不属于 Railway 随机运行时数据；默认部署不需要它们。
+协议专属 SNI override 只有在三组互斥且完整时才会被接受；否则使用仓库内 canonical SNI 分组，避免旧 Railway 环境变量污染新部署。
 
 ## 安全边界
 
