@@ -27,19 +27,18 @@ XRAY_PID=$!
 
 cleanup() {
   rm -f "$READY_FILE"
-  kill "$XRAY_PID" 2>/dev/null || true
   kill "${GATEWAY_PID:-}" 2>/dev/null || true
-  wait "$XRAY_PID" 2>/dev/null || true
+  kill "$XRAY_PID" 2>/dev/null || true
   wait "${GATEWAY_PID:-}" 2>/dev/null || true
+  wait "$XRAY_PID" 2>/dev/null || true
 }
 trap cleanup INT TERM EXIT
 
-# Wait for all four local inbound listeners before publishing readiness.
+# Wait for all four local Xray inbound listeners before starting the Gateway.
 for _ in $(seq 1 60); do
   if python3 - <<'PY'
 import socket
-ports = (10085, 10086, 10087, 10088)
-for port in ports:
+for port in (10085, 10086, 10087, 10088):
     s = socket.create_connection(('127.0.0.1', port), 1)
     s.close()
 PY
@@ -56,8 +55,27 @@ for port in (10085, 10086, 10087, 10088):
     s.close()
 PY
 
-touch "$READY_FILE"
 python3 /opt/xray/scripts/gateway_router.py &
 GATEWAY_PID=$!
+
+# Railway health checks use $PORT. Do not publish readiness until Gateway binds.
+GATEWAY_PORT="${PORT:-8080}"
+for _ in $(seq 1 30); do
+  if python3 - "$GATEWAY_PORT" <<'PY'
+import socket, sys
+s = socket.create_connection(('127.0.0.1', int(sys.argv[1])), 1)
+s.close()
+PY
+  then
+    touch "$READY_FILE"
+    break
+  fi
+  sleep 1
+done
+
+if [ ! -f "$READY_FILE" ]; then
+  echo "ERROR: Gateway did not bind to PORT=$GATEWAY_PORT" >&2
+  exit 1
+fi
 
 wait "$GATEWAY_PID"
