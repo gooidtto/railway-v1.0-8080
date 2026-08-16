@@ -18,11 +18,8 @@ COPY site/ /opt/xray/site/
 RUN chmod 0755 /usr/local/bin/xray /opt/xray/scripts/*.sh /opt/xray/scripts/*.py \
     && chmod 0644 /opt/xray/config/reality-sni-candidates.txt /opt/xray/site/*
 
-# Railway networking contract: Gateway is the only application listener that
-# is externally targeted. Xray listener ports are allocated at runtime and
-# are intentionally NOT exposed or configured as fixed environment values.
 ENV PORT=8080 \
-    XRAY_LOGLEVEL=warning \
+    XRAY_LOGLEVEL=info \
     DATA_DIR=/data \
     XRAY_CONFIG=/etc/xray/config.json \
     REALITY_FINGERPRINT=chrome \
