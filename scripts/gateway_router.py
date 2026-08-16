@@ -119,7 +119,7 @@ def tls_sni(data):
                     if q + name_len > limit:
                         return ''
                     if name_type == 0:
-                        return block[q:q + name_len].decode('idna')
+                        return block[q:q + name_len].decode('idna').lower()
                     q += name_len
             p += ln
     except (IndexError, ValueError, UnicodeError):
@@ -194,6 +194,24 @@ def website(c, method, path):
     return True
 
 
+def route_table(runtime, manifest):
+    routes = {}
+    for kind, target_key in (('xhttp', 'xhttp_reality'), ('vision', 'vision_reality'), ('grpc', 'grpc_reality')):
+        for sni in manifest.get('reality', {}).get(kind, []):
+            key = sni.strip().lower()
+            if not key:
+                continue
+            if key in routes:
+                raise SystemExit('[gateway-router] ERROR: duplicate REALITY SNI=%s (%s and %s)' % (key, routes[key][0], kind))
+            routes[key] = (kind, runtime['listeners'][target_key])
+    public_domain = runtime.get('railway', {}).get('public_domain', '').strip().lower()
+    if public_domain:
+        if public_domain in routes:
+            raise SystemExit('[gateway-router] ERROR: public domain overlaps REALITY SNI: %s' % public_domain)
+        routes[public_domain] = ('xhttp-tls', runtime['listeners']['xhttp_tls'])
+    return routes
+
+
 def handle(c):
     upstream = None
     try:
@@ -202,28 +220,16 @@ def handle(c):
         runtime = load(RUNTIME_FILE, {})
         manifest = load(MANIFEST_FILE, {})
         ports = runtime.get('listeners', {})
-        railway = runtime.get('railway', {})
+        routes = route_table(runtime, manifest)
 
         if initial[:1] == b'\x16' and len(initial) >= 3:
             sni = tls_sni(initial)
-            reality = manifest.get('reality', {})
-            public_domain = railway.get('public_domain', '')
-            if public_domain and sni == public_domain:
-                target = ports['xhttp_tls']
-                route = 'xhttp-tls'
-            elif sni in set(reality.get('vision', [])):
-                target = ports['vision_reality']
-                route = 'vision-reality'
-            elif sni in set(reality.get('grpc', [])):
-                target = ports['grpc_reality']
-                route = 'grpc-reality'
-            elif sni in set(reality.get('xhttp', [])):
-                target = ports['xhttp_reality']
-                route = 'xhttp-reality'
-            else:
+            route = routes.get(sni)
+            if not route:
                 print('[gateway-router] reject unknown TLS SNI=%s' % (sni or '-'), flush=True)
                 return
-            print('[gateway-router] tls sni=%s route=%s target=%s' % (sni or '-', route, target), flush=True)
+            route_name, target = route
+            print('[gateway-router] tls sni=%s route=%s target=%s' % (sni or '-', route_name, target), flush=True)
             upstream = connect(target)
             relay(c, upstream, initial)
             return
