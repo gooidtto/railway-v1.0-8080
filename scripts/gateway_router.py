@@ -35,15 +35,7 @@ def http_response(status, ctype, body, head=False):
     if isinstance(body, str):
         body = body.encode()
     reason = {200: 'OK', 404: 'Not Found', 405: 'Method Not Allowed', 503: 'Service Unavailable'}.get(status, 'OK')
-    h = (
-        'HTTP/1.1 %s %s\r\n'
-        'Content-Type: %s\r\n'
-        'Content-Length: %d\r\n'
-        'Connection: keep-alive\r\n'
-        'Keep-Alive: timeout=15, max=100\r\n'
-        'Cache-Control: no-store\r\n'
-        'X-Content-Type-Options: nosniff\r\n\r\n'
-    ) % (status, reason, ctype, len(body))
+    h = ('HTTP/1.1 %s %s\r\nContent-Type: %s\r\nContent-Length: %d\r\nConnection: keep-alive\r\nKeep-Alive: timeout=15, max=100\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\n\r\n') % (status, reason, ctype, len(body))
     return h.encode() if head else h.encode() + body
 
 
@@ -61,12 +53,6 @@ def parse_http(data):
 
 
 def tls_handshake_bytes(data):
-    """Return complete TLS handshake bytes reconstructed across records.
-
-    ClientHello is commonly fragmented across TCP reads and can also span
-    multiple TLS records. The old router parsed only the first record, which
-    produced malformed SNI values such as ``www.cloudflare.\\x16\\x03\\x01``.
-    """
     if len(data) < 5 or data[0] != 0x16 or data[1] != 0x03:
         return None
     pos = 0
@@ -90,7 +76,6 @@ def tls_handshake_bytes(data):
 
 
 def tls_sni(data):
-    """Extract SNI from a complete ClientHello without terminating TLS."""
     try:
         hello = tls_handshake_bytes(data)
         if not hello or hello[0] != 0x01:
@@ -143,7 +128,6 @@ def tls_sni(data):
 
 
 def recv_initial(s, timeout=10):
-    """Buffer enough bytes for HTTP headers or a complete TLS ClientHello."""
     s.settimeout(timeout)
     data = bytearray()
     while len(data) < 65536:
@@ -154,19 +138,15 @@ def recv_initial(s, timeout=10):
         raw = bytes(data)
         if b'\r\n\r\n' in raw:
             return raw
-        if len(raw) >= 5 and raw[0] == 0x16 and raw[1] == 0x03:
-            if tls_handshake_bytes(raw) is not None:
-                return raw
+        if len(raw) >= 5 and raw[0] == 0x16 and raw[1] == 0x03 and tls_handshake_bytes(raw) is not None:
+            return raw
         if len(raw) >= 8 and not raw.startswith((b'GET ', b'POST ', b'HEAD ', b'PUT ', b'OPTIONS ', b'PATCH ', b'DELETE ', b'CONNECT ')) and raw[0] != 0x16:
             return raw
     return bytes(data)
 
 
 def relay(a, b, initial=b''):
-    tune(a)
-    tune(b)
-    a.settimeout(None)
-    b.settimeout(None)
+    tune(a); tune(b); a.settimeout(None); b.settimeout(None)
     if initial:
         b.sendall(initial)
     while True:
@@ -189,12 +169,10 @@ def connect(port):
 
 def website(c, method, path):
     if path == '/health':
-        c.sendall(http_response(200, 'text/plain; charset=utf-8', 'OK\n', method == 'HEAD'))
-        return True
+        c.sendall(http_response(200, 'text/plain; charset=utf-8', 'OK\n', method == 'HEAD')); return True
     if path == '/ready':
         ok = READY_FILE.exists()
-        c.sendall(http_response(200 if ok else 503, 'text/plain; charset=utf-8', 'READY\n' if ok else 'NOT READY\n', method == 'HEAD'))
-        return True
+        c.sendall(http_response(200 if ok else 503, 'text/plain; charset=utf-8', 'READY\n' if ok else 'NOT READY\n', method == 'HEAD')); return True
     if path.startswith('/sub/'):
         token = TOKEN_FILE.read_text().strip() if TOKEN_FILE.is_file() else ''
         if token and path == '/sub/' + token and SUB_FILE.is_file():
@@ -203,18 +181,15 @@ def website(c, method, path):
             c.sendall(http_response(404, 'text/plain; charset=utf-8', 'Not Found\n', method == 'HEAD'))
         return True
     if path == '/sub':
-        c.sendall(http_response(404, 'text/plain; charset=utf-8', 'Not Found\n', method == 'HEAD'))
-        return True
+        c.sendall(http_response(404, 'text/plain; charset=utf-8', 'Not Found\n', method == 'HEAD')); return True
     if method not in {'GET', 'HEAD'}:
-        c.sendall(http_response(405, 'text/plain; charset=utf-8', 'Method Not Allowed\n'))
-        return True
+        c.sendall(http_response(405, 'text/plain; charset=utf-8', 'Method Not Allowed\n')); return True
     rel = 'index.html' if path == '/' else path.lstrip('/')
     target = (SITE_DIR / rel).resolve()
     if SITE_DIR not in target.parents and target != SITE_DIR or not target.is_file():
-        c.sendall(http_response(404, 'text/plain; charset=utf-8', 'Not Found\n', method == 'HEAD'))
-        return True
+        c.sendall(http_response(404, 'text/plain; charset=utf-8', 'Not Found\n', method == 'HEAD')); return True
     body = target.read_bytes()
-    types = {'.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'application/javascript; charset=utf-8', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg'}
+    types = {'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'application/javascript; charset=utf-8','.json':'application/json','.svg':'image/svg+xml','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg'}
     c.sendall(http_response(200, types.get(target.suffix.lower(), 'application/octet-stream'), body, method == 'HEAD'))
     return True
 
@@ -223,24 +198,32 @@ def handle(c):
     upstream = None
     try:
         initial = recv_initial(c)
-        if not initial:
-            return
+        if not initial: return
         runtime = load(RUNTIME_FILE, {})
         manifest = load(MANIFEST_FILE, {})
         ports = runtime.get('listeners', {})
+        railway = runtime.get('railway', {})
 
         if initial[:1] == b'\x16' and len(initial) >= 3:
             sni = tls_sni(initial)
             reality = manifest.get('reality', {})
-            if sni in set(reality.get('vision', [])):
+            public_domain = railway.get('public_domain', '')
+            if public_domain and sni == public_domain:
+                target = ports['xhttp_tls']
+                route = 'xhttp-tls'
+            elif sni in set(reality.get('vision', [])):
                 target = ports['vision_reality']
+                route = 'vision-reality'
             elif sni in set(reality.get('grpc', [])):
                 target = ports['grpc_reality']
+                route = 'grpc-reality'
             elif sni in set(reality.get('xhttp', [])):
                 target = ports['xhttp_reality']
+                route = 'xhttp-reality'
             else:
                 print('[gateway-router] reject unknown TLS SNI=%s' % (sni or '-'), flush=True)
                 return
+            print('[gateway-router] tls sni=%s route=%s target=%s' % (sni or '-', route, target), flush=True)
             upstream = connect(target)
             relay(c, upstream, initial)
             return
@@ -250,14 +233,11 @@ def handle(c):
             method, path, _ = parsed
             xhttp_path = manifest.get('xhttp_path', '/xhttp')
             if path != xhttp_path and not path.startswith(xhttp_path + '/'):
-                website(c, method, path)
-                return
+                website(c, method, path); return
             upstream = connect(ports['xhttp_tls'])
             relay(c, upstream, initial)
             return
 
-        # Opaque TCP remains the high-throughput Vision path. This is only used
-        # when the connection is not HTTP and not a TLS ClientHello.
         upstream = connect(ports['vision_reality'])
         relay(c, upstream, initial)
     except (OSError, TimeoutError) as exc:
@@ -265,10 +245,8 @@ def handle(c):
     finally:
         for s in (upstream, c):
             if s:
-                try:
-                    s.close()
-                except OSError:
-                    pass
+                try: s.close()
+                except OSError: pass
 
 
 def main():
@@ -276,12 +254,10 @@ def main():
     port = int(runtime.get('listeners', {}).get('gateway', os.getenv('PORT', '8080')))
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        s.bind(('0.0.0.0', port))
-        s.listen(512)
+        s.bind(('0.0.0.0', port)); s.listen(512)
         print('[gateway-router] listening=0.0.0.0:%d' % port, flush=True)
         while True:
-            c, _ = s.accept()
-            tune(c)
+            c, _ = s.accept(); tune(c)
             threading.Thread(target=handle, args=(c,), daemon=True).start()
 
 
