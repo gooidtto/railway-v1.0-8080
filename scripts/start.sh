@@ -9,7 +9,7 @@ mkdir -p "$DATA_DIR"
 #   1. discover Railway networking
 #   2. allocate fresh private Xray listener ports
 #   3. generate Xray + runtime manifest
-#   4. generate subscription from the same manifest
+#   4. generate and self-check subscription from the same manifest
 #   5. start Gateway from the same manifest
 python3 /opt/xray/scripts/runtime_discovery.py
 python3 /opt/xray/scripts/port_allocator.py
@@ -69,9 +69,12 @@ if [ "$READY" -ne 1 ]; then
   exit 1
 fi
 
+echo "[startup] Xray listeners READY: xhttp-reality=$XRAY_XHTTP_REALITY_PORT xhttp-tls=$XRAY_XHTTP_TLS_PORT vision=$XRAY_VISION_REALITY_PORT grpc=$XRAY_GRPC_REALITY_PORT"
+
 python3 /opt/xray/scripts/gateway_router.py &
 GATEWAY_PID=$!
 
+GATEWAY_READY=0
 for _ in $(seq 1 30); do
   if python3 - "$GATEWAY_PORT" <<'PY'
 import socket, sys
@@ -79,15 +82,52 @@ s = socket.create_connection(('127.0.0.1', int(sys.argv[1])), 1)
 s.close()
 PY
   then
-    touch "$READY_FILE"
+    GATEWAY_READY=1
     break
   fi
   sleep 1
 done
 
-if [ ! -f "$READY_FILE" ]; then
+if [ "$GATEWAY_READY" -ne 1 ]; then
   echo "ERROR: Gateway did not bind to PORT=$GATEWAY_PORT" >&2
   exit 1
 fi
+
+# Validate the exact HTTP subscription path locally before declaring the
+# deployment ready. This catches token/path/file mismatches without involving
+# the external Railway edge or a client application.
+python3 - <<'PY'
+import json
+import os
+import socket
+from pathlib import Path
+
+root = Path(os.getenv('DATA_DIR', '/data'))
+runtime = json.loads((root / 'runtime.json').read_text())
+port = int(runtime['listeners']['gateway'])
+token = (root / 'subscription_token.txt').read_text().strip()
+expected = (root / 'subscription.txt').read_bytes().strip()
+path = '/sub/' + token
+request = ('GET %s HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' % path).encode()
+with socket.create_connection(('127.0.0.1', port), timeout=5) as s:
+    s.sendall(request)
+    chunks = []
+    while True:
+        chunk = s.recv(65536)
+        if not chunk:
+            break
+        chunks.append(chunk)
+raw = b''.join(chunks)
+head, sep, body = raw.partition(b'\r\n\r\n')
+status = head.split(b'\r\n', 1)[0] if head else b''
+if not status.startswith(b'HTTP/1.1 200 '):
+    raise SystemExit('[startup] ERROR: local subscription HTTP check failed: %s' % status.decode('latin1', 'replace'))
+if body.strip() != expected:
+    raise SystemExit('[startup] ERROR: local subscription body does not match /data/subscription.txt')
+print('[startup] local subscription check=OK bytes=%d path=%s' % (len(body.strip()), path), flush=True)
+PY
+
+touch "$READY_FILE"
+echo "[startup] READY: gateway=$GATEWAY_PORT subscription=OK"
 
 wait "$GATEWAY_PID"
