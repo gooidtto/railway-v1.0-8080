@@ -143,9 +143,9 @@ def inbound(port, network, security, uuid, decryption, reality=None, xhttp=None,
         stream['xhttpSettings'] = xhttp
     if grpc:
         stream['grpcSettings'] = grpc
-    settings = {'clients': [{'id': uuid}]}
-    if decryption:
-        settings['decryption'] = decryption
+    # Explicitly declare VLESS decryption. "none" is the compatibility-first
+    # default; ML-KEM VLESS Encryption is opt-in through ENABLE_VLESS_ENCRYPTION.
+    settings = {'clients': [{'id': uuid}], 'decryption': decryption or 'none'}
     if flow:
         settings['clients'][0]['flow'] = flow
     return {'listen': '127.0.0.1', 'port': port, 'protocol': 'vless', 'settings': settings, 'streamSettings': stream}
@@ -170,18 +170,31 @@ def main():
         os.chmod(private_file, 0o600)
         os.chmod(public_file, 0o600)
 
+    # VLESS Encryption is deliberately opt-in. The generated ML-KEM URI is
+    # valid Xray syntax, but many clients do not support it consistently.
+    enable_encryption = os.getenv('ENABLE_VLESS_ENCRYPTION', '').strip().lower() in {'1', 'true', 'yes', 'on'}
     dec_file = DATA_DIR / 'vless_decryption.txt'
     enc_file = DATA_DIR / 'vless_encryption.txt'
-    if dec_file.is_file() and enc_file.is_file():
-        decryption = dec_file.read_text().strip()
-        encryption = enc_file.read_text().strip()
+    if enable_encryption:
+        if dec_file.is_file() and enc_file.is_file() and dec_file.read_text().strip() and enc_file.read_text().strip():
+            decryption = dec_file.read_text().strip()
+            encryption = enc_file.read_text().strip()
+        else:
+            try:
+                decryption, encryption = make_vless_keys()
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                raise SystemExit('ERROR: ENABLE_VLESS_ENCRYPTION is enabled but xray vlessenc failed')
+            if not decryption or not encryption:
+                raise SystemExit('ERROR: ENABLE_VLESS_ENCRYPTION is enabled but ML-KEM keys could not be generated')
+            dec_file.write_text(decryption + '\n', encoding='utf-8')
+            enc_file.write_text(encryption + '\n', encoding='utf-8')
+            os.chmod(dec_file, 0o600)
+            os.chmod(enc_file, 0o600)
     else:
-        try:
-            decryption, encryption = make_vless_keys()
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            decryption, encryption = '', ''
-        dec_file.write_text(decryption + '\n')
-        enc_file.write_text(encryption + '\n')
+        decryption = 'none'
+        encryption = ''
+        dec_file.write_text('none\n', encoding='utf-8')
+        enc_file.write_text('\n', encoding='utf-8')
         os.chmod(dec_file, 0o600)
         os.chmod(enc_file, 0o600)
 
@@ -196,9 +209,6 @@ def main():
         'www.notion.so', 'store.epicgames.com', 'www.gog.com'
     ])
     pools = partition_candidates(all_candidates)
-
-    # Each protocol gets one profile. The SNI, serverNames and camouflage
-    # target are deliberately derived from the same selected hostname.
     selected = {kind: pools[kind][0] for kind in ('xhttp', 'vision', 'grpc')}
     target_overrides = {
         'xhttp': os.getenv('XHTTP_REALITY_TARGET', '').strip(),
@@ -211,32 +221,21 @@ def main():
 
     ports = runtime['listeners']
     inbounds = [
-        inbound(
-            ports['xhttp_reality'], 'xhttp', 'reality', uuid, decryption,
-            reality=reality_settings(selected['xhttp'] + ':443', selected['xhttp'], private, sid),
-            xhttp={'path': xhttp_path, 'mode': xhttp_mode}
-        ),
-        inbound(
-            ports['xhttp_tls'], 'xhttp', 'none', uuid, decryption,
-            xhttp={'path': xhttp_path, 'mode': xhttp_mode}
-        ),
-        inbound(
-            ports['vision_reality'], 'raw', 'reality', uuid, decryption,
-            reality=reality_settings(selected['vision'] + ':443', selected['vision'], private, sid),
-            flow='xtls-rprx-vision'
-        ),
-        inbound(
-            ports['grpc_reality'], 'grpc', 'reality', uuid, decryption,
-            reality=reality_settings(selected['grpc'] + ':443', selected['grpc'], private, sid),
-            grpc={'serviceName': grpc_service}
-        ),
+        inbound(ports['xhttp_reality'], 'xhttp', 'reality', uuid, decryption,
+                reality=reality_settings(selected['xhttp'] + ':443', selected['xhttp'], private, sid),
+                xhttp={'path': xhttp_path, 'mode': xhttp_mode}),
+        inbound(ports['xhttp_tls'], 'xhttp', 'none', uuid, decryption,
+                xhttp={'path': xhttp_path, 'mode': xhttp_mode}),
+        inbound(ports['vision_reality'], 'raw', 'reality', uuid, decryption,
+                reality=reality_settings(selected['vision'] + ':443', selected['vision'], private, sid),
+                flow='xtls-rprx-vision'),
+        inbound(ports['grpc_reality'], 'grpc', 'reality', uuid, decryption,
+                reality=reality_settings(selected['grpc'] + ':443', selected['grpc'], private, sid),
+                grpc={'serviceName': grpc_service}),
     ]
 
-    config = {
-        'log': {'loglevel': os.getenv('XRAY_LOGLEVEL', 'warning')},
-        'inbounds': inbounds,
-        'outbounds': [{'protocol': 'freedom', 'tag': 'direct'}],
-    }
+    config = {'log': {'loglevel': os.getenv('XRAY_LOGLEVEL', 'warning')}, 'inbounds': inbounds,
+              'outbounds': [{'protocol': 'freedom', 'tag': 'direct'}]}
     CONFIG.parent.mkdir(parents=True, exist_ok=True)
     tmp = CONFIG.with_suffix('.json.tmp')
     tmp.write_text(json.dumps(config, indent=2) + '\n', encoding='utf-8')
@@ -244,34 +243,22 @@ def main():
     os.replace(tmp, CONFIG)
 
     manifest = {
-        'schema': 2,
-        'uuid': uuid,
-        'public_key': public,
-        'short_id': sid,
-        'encryption': encryption,
-        'decryption': decryption,
-        'reality': {
-            'xhttp': [selected['xhttp']],
-            'vision': [selected['vision']],
-            'grpc': [selected['grpc']],
-        },
+        'schema': 2, 'uuid': uuid, 'public_key': public, 'short_id': sid,
+        'encryption': encryption, 'decryption': decryption,
+        'vless_encryption_enabled': enable_encryption,
+        'reality': {'xhttp': [selected['xhttp']], 'vision': [selected['vision']], 'grpc': [selected['grpc']]},
         'reality_targets': {kind: selected[kind] + ':443' for kind in selected},
-        'ports': ports,
-        'xhttp_path': xhttp_path,
-        'xhttp_mode': xhttp_mode,
-        'grpc_service_name': grpc_service,
-        'fingerprint': fingerprint,
+        'ports': ports, 'xhttp_path': xhttp_path, 'xhttp_mode': xhttp_mode,
+        'grpc_service_name': grpc_service, 'fingerprint': fingerprint,
     }
     mf = DATA_DIR / 'xray-manifest.json'
     mf.write_text(json.dumps(manifest, indent=2) + '\n', encoding='utf-8')
     os.chmod(mf, 0o600)
 
-    print('[xray-config-generator] REALITY profiles: xhttp=%s target=%s vision=%s target=%s grpc=%s target=%s' % (
-        selected['xhttp'], selected['xhttp'] + ':443',
-        selected['vision'], selected['vision'] + ':443',
-        selected['grpc'], selected['grpc'] + ':443'))
+    print('[xray-config-generator] VLESS encryption=%s' % ('enabled' if enable_encryption else 'disabled (compatibility mode)'), flush=True)
+    print('[xray-config-generator] REALITY profiles: xhttp=%s vision=%s grpc=%s' % (selected['xhttp'], selected['vision'], selected['grpc']), flush=True)
     print('[xray-config-generator] listeners: xhttp_reality=127.0.0.1:%s xhttp_tls=127.0.0.1:%s vision_reality=127.0.0.1:%s grpc_reality=127.0.0.1:%s' % (
-        ports['xhttp_reality'], ports['xhttp_tls'], ports['vision_reality'], ports['grpc_reality']))
+        ports['xhttp_reality'], ports['xhttp_tls'], ports['vision_reality'], ports['grpc_reality']), flush=True)
     return 0
 
 
