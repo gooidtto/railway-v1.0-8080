@@ -55,9 +55,12 @@ def main():
             'railway-xhttp-tls'))
 
     if r['tcp_proxy_domain'] and r['tcp_proxy_port']:
+        # Use Xray's canonical URI network names. In particular, Vision is
+        # TCP/raw transport in the config, but `tcp` is the interoperable
+        # VLESS URI spelling used by current Xray clients.
         profiles = (
             ('xhttp', 'xhttp', {'path': manifest['xhttp_path'], 'mode': manifest['xhttp_mode']}),
-            ('vision', 'raw', {'flow': 'xtls-rprx-vision'}),
+            ('vision', 'tcp', {'flow': 'xtls-rprx-vision'}),
             ('grpc', 'grpc', {'serviceName': manifest['grpc_service_name'], 'alpn': 'h2'}),
         )
         for kind, network, extra in profiles:
@@ -100,7 +103,6 @@ def main():
         urls.append('TCP=http://%s:%s/sub/%s' % (r['tcp_proxy_domain'], r['tcp_proxy_port'], token))
     endpoint_text = '\n'.join(urls) + ('\n' if urls else '')
     write('subscription_endpoints.txt', endpoint_text)
-    # Backward-compatible filename for existing operational checks/scripts.
     write('subscription_url.txt', endpoint_text)
 
     expected = 4 if r['public_domain'] and r['tcp_proxy_domain'] and r['tcp_proxy_port'] else 1
