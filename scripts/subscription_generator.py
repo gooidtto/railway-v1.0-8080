@@ -51,25 +51,27 @@ def main():
     sid = manifest['short_id']
     public_key = manifest['public_key']
 
-    # VLESS Encryption is only advertised when explicitly enabled by the
-    # server manifest. The default subscription remains broadly compatible
-    # with clients that implement standard VLESS + REALITY/XHTTP/TCP/gRPC.
     encryption = manifest.get('encryption', '') if manifest.get('vless_encryption_enabled', False) else ''
     common = {'encryption': encryption} if encryption else {}
     nodes = []
 
-    # Subscription retrieval is always HTTPS through the Railway generated
-    # Domain. The TCP Proxy is a VLESS transport endpoint, never a subscription
-    # endpoint.
+    # Railway Generate Domain is an HTTP/HTTPS edge. Railway terminates the
+    # public TLS session before forwarding the request to Target Port 8080.
+    # Therefore this node MUST use XHTTP over HTTP at the service side; it
+    # must not advertise end-to-end VLESS TLS through the Railway domain.
+    # The edge still provides HTTPS to the client, while the Gateway receives
+    # the decrypted HTTP request and forwards /xhttp to the local Xray inbound.
     if r['public_domain']:
         nodes.append(vless(
             uuid, r['public_domain'], 443,
-            {**common, 'security': 'tls', 'type': 'xhttp',
+            {**common, 'security': 'none', 'type': 'xhttp',
              'fp': manifest['fingerprint'], 'sni': r['public_domain'],
              'alpn': 'h2,http/1.1', 'path': manifest['xhttp_path'],
              'mode': manifest['xhttp_mode']},
-            'railway-xhttp-tls'))
+            'railway-xhttp-https-edge'))
 
+    # Railway TCP Proxy preserves raw TCP and is therefore the only public
+    # endpoint used for end-to-end REALITY profiles.
     if r['tcp_proxy_domain'] and r['tcp_proxy_port']:
         profiles = (
             ('xhttp', 'xhttp', {'path': manifest['xhttp_path'], 'mode': manifest['xhttp_mode']}),
@@ -95,13 +97,10 @@ def main():
 
     validate_nodes(nodes)
     text = '\n'.join(nodes) + '\n'
-    # Standard subscription format: UTF-8 VLESS lines wrapped once in Base64.
     encoded = base64.b64encode(text.encode('utf-8')).decode('ascii') + '\n'
     write('vless.txt', text)
     write('subscription.txt', encoded)
 
-    # Server-side round-trip validation catches empty/truncated/malformed
-    # subscription files before a client ever downloads them.
     try:
         decoded = base64.b64decode(encoded.strip(), validate=True).decode('utf-8')
     except Exception as exc:
@@ -135,8 +134,9 @@ def main():
     if len(nodes) != expected:
         raise SystemExit('[subscription-generator] ERROR: expected %d nodes, generated %d' % (expected, len(nodes)))
 
-    print('[subscription-generator] nodes=%d (1 TLS + 3 REALITY)' % len(nodes), flush=True)
+    print('[subscription-generator] nodes=%d (1 HTTPS-edge XHTTP + 3 REALITY)' % len(nodes), flush=True)
     print('[subscription-generator] vless-encryption=%s' % ('enabled' if encryption else 'disabled'), flush=True)
+    print('[subscription-generator] public-domain transport=HTTPS-edge -> XHTTP security=none', flush=True)
     print('[subscription-generator] vless-bytes=%d subscription-bytes=%d' % (len(text.encode()), len(encoded.encode())), flush=True)
     print('[subscription-generator] base64-roundtrip=OK', flush=True)
     if subscription_url:
