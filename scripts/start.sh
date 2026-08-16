@@ -25,8 +25,10 @@ rm -f "$READY_FILE"
 # listener numbers in the startup orchestrator.
 set -- $(python3 - <<'PY'
 import json
+import os
 from pathlib import Path
-p = json.loads(Path('/data/runtime.json').read_text())['listeners']
+root = Path(os.getenv('DATA_DIR', '/data'))
+p = json.loads((root / 'runtime.json').read_text())['listeners']
 print(p['xhttp_reality'], p['xhttp_tls'], p['vision_reality'], p['grpc_reality'], p['gateway'])
 PY
 )
