@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import json
 import os
+import sys
 import time
 from pathlib import Path
 from urllib.parse import urlparse
@@ -48,7 +49,7 @@ def discover():
     grpc_domain = host_only(os.getenv('GRPC_DOMAIN')) or custom_domain
 
     return {
-        'schema': 1,
+        'schema': 2,
         'updated_at': int(time.time()),
         'railway': {
             'port': port,
@@ -86,6 +87,26 @@ def atomic_write(path, payload):
     os.replace(tmp, path)
 
 
+def require_networking(runtime):
+    r = runtime['railway']
+    missing = []
+    if not r['public_domain']:
+        missing.append('RAILWAY_PUBLIC_DOMAIN (Generate Domain → target 8080)')
+    if not r['tcp_proxy_domain']:
+        missing.append('RAILWAY_TCP_PROXY_DOMAIN (TCP Proxy → target 8080)')
+    if not r['tcp_proxy_port']:
+        missing.append('RAILWAY_TCP_PROXY_PORT (Railway-assigned external port)')
+    if r['application_port'] != r['port']:
+        missing.append('RAILWAY_TCP_APPLICATION_PORT must match PORT (expected 8080)')
+    if missing:
+        print('[runtime-discovery] NETWORKING NOT READY', file=sys.stderr)
+        for item in missing:
+            print('[runtime-discovery] missing: %s' % item, file=sys.stderr)
+        print('[runtime-discovery] Add exactly one Generate Domain and one TCP Proxy, both targeting 8080, then Deploy/Redeploy.', file=sys.stderr)
+        return False
+    return True
+
+
 def main():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     runtime = discover()
@@ -97,7 +118,7 @@ def main():
     print('[runtime-discovery] project=%s service=%s replica=%s region=%s' % (
         r['project_id'] or '-', r['service_id'] or '-', r['replica_id'] or '-', r['replica_region'] or '-'))
     print('[runtime-discovery] runtime=%s' % RUNTIME_FILE)
-    return 0
+    return 0 if require_networking(runtime) else 1
 
 
 if __name__ == '__main__':
