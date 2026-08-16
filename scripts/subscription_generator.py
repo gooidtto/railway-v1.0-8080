@@ -24,7 +24,10 @@ def q(value):
 
 def vless(uuid, host, port, params, label):
     query = '&'.join('%s=%s' % (k, q(v)) for k, v in params.items() if v is not None and v != '')
-    return 'vless://%s@%s:%s/?%s#%s' % (uuid, host, port, query, q(label))
+    # Keep the URI in the canonical VLESS form: no path separator before '?'.
+    # This avoids parsers that reject `host:port/?query` while remaining
+    # compatible with Xray clients.
+    return 'vless://%s@%s:%s?%s#%s' % (uuid, host, port, query, q(label))
 
 
 def first_sni(manifest, kind):
@@ -40,9 +43,13 @@ def main():
     sid = manifest['short_id']
     public_key = manifest['public_key']
     enc = manifest.get('encryption', '')
-    common = {'encryption': enc}
+    common = {'encryption': enc} if enc else {}
     nodes = []
 
+    # Subscription retrieval is always HTTPS through the Railway generated
+    # Domain. The TCP Proxy is a transport endpoint for VLESS nodes, not a
+    # subscription endpoint. Advertising an HTTP subscription URL here causes
+    # some clients to reject the subscription before parsing its contents.
     if r['public_domain']:
         nodes.append(vless(
             uuid,
@@ -55,9 +62,6 @@ def main():
             'railway-xhttp-tls'))
 
     if r['tcp_proxy_domain'] and r['tcp_proxy_port']:
-        # Use Xray's canonical URI network names. In particular, Vision is
-        # TCP/raw transport in the config, but `tcp` is the interoperable
-        # VLESS URI spelling used by current Xray clients.
         profiles = (
             ('xhttp', 'xhttp', {'path': manifest['xhttp_path'], 'mode': manifest['xhttp_mode']}),
             ('vision', 'tcp', {'flow': 'xtls-rprx-vision'}),
@@ -96,22 +100,32 @@ def main():
         token = secrets.token_urlsafe(32)
         write('subscription_token.txt', token + '\n')
 
-    urls = []
+    # Only advertise the HTTPS subscription URL. Keep the raw TCP proxy
+    # address separately for diagnostics so clients do not mistake it for a
+    # second subscription source.
+    subscription_url = ''
     if r['public_domain']:
-        urls.append('PRIMARY=https://%s/sub/%s' % (r['public_domain'], token))
+        subscription_url = 'https://%s/sub/%s' % (r['public_domain'], token)
+        write('subscription_endpoints.txt', 'PRIMARY=%s\n' % subscription_url)
+        write('subscription_url.txt', subscription_url + '\n')
+    else:
+        write('subscription_endpoints.txt', '')
+        write('subscription_url.txt', '')
+
     if r['tcp_proxy_domain'] and r['tcp_proxy_port']:
-        urls.append('TCP=http://%s:%s/sub/%s' % (r['tcp_proxy_domain'], r['tcp_proxy_port'], token))
-    endpoint_text = '\n'.join(urls) + ('\n' if urls else '')
-    write('subscription_endpoints.txt', endpoint_text)
-    write('subscription_url.txt', endpoint_text)
+        write('tcp_proxy_endpoint.txt', 'TCP=%s:%s\n' % (r['tcp_proxy_domain'], r['tcp_proxy_port']))
+    else:
+        write('tcp_proxy_endpoint.txt', '')
 
     expected = 4 if r['public_domain'] and r['tcp_proxy_domain'] and r['tcp_proxy_port'] else 1
     if len(nodes) != expected:
         raise SystemExit('[subscription-generator] ERROR: expected %d nodes, generated %d' % (expected, len(nodes)))
 
     print('[subscription-generator] nodes=%d (1 TLS + 3 REALITY)' % len(nodes))
-    for item in urls:
-        print('[subscription-generator] %s' % item)
+    if subscription_url:
+        print('[subscription-generator] PRIMARY=%s' % subscription_url)
+    if r['tcp_proxy_domain'] and r['tcp_proxy_port']:
+        print('[subscription-generator] TCP transport=%s:%s' % (r['tcp_proxy_domain'], r['tcp_proxy_port']))
     return 0
 
 
