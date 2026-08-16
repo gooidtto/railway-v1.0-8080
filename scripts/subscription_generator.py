@@ -61,7 +61,7 @@ def main():
     if r['tcp_proxy_domain'] and r['tcp_proxy_port']:
         profiles = (
             ('xhttp', 'xhttp', {'path': manifest['xhttp_path'], 'mode': manifest['xhttp_mode']}),
-            ('vision', 'raw', {}),
+            ('vision', 'raw', {'flow': 'xtls-rprx-vision'}),
             ('grpc', 'grpc', {'serviceName': manifest['grpc_service_name'], 'alpn': 'h2'}),
         )
         for kind, network, extra in profiles:
