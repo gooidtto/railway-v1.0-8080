@@ -135,6 +135,18 @@ def reality_settings(target, server_name, private, sid):
     return {'show': False, 'target': target, 'xver': 0, 'serverNames': [server_name], 'privateKey': private, 'shortIds': [sid]}
 
 
+def xhttp_settings(path, mode):
+    return {
+        'path': path,
+        'mode': mode,
+        'extra': {
+            'xPaddingBytes': '100-1000',
+            'scStreamUpServerSecs': '20-80',
+            'scMaxEachPostBytes': 1000000,
+        },
+    }
+
+
 def inbound(port, network, security, uuid, decryption, reality=None, xhttp=None, grpc=None, flow=None):
     stream = {'network': network, 'security': security}
     if reality:
@@ -143,8 +155,6 @@ def inbound(port, network, security, uuid, decryption, reality=None, xhttp=None,
         stream['xhttpSettings'] = xhttp
     if grpc:
         stream['grpcSettings'] = grpc
-    # Explicitly declare VLESS decryption. "none" is the compatibility-first
-    # default; ML-KEM VLESS Encryption is opt-in through ENABLE_VLESS_ENCRYPTION.
     settings = {'clients': [{'id': uuid}], 'decryption': decryption or 'none'}
     if flow:
         settings['clients'][0]['flow'] = flow
@@ -170,8 +180,6 @@ def main():
         os.chmod(private_file, 0o600)
         os.chmod(public_file, 0o600)
 
-    # VLESS Encryption is deliberately opt-in. The generated ML-KEM URI is
-    # valid Xray syntax, but many clients do not support it consistently.
     enable_encryption = os.getenv('ENABLE_VLESS_ENCRYPTION', '').strip().lower() in {'1', 'true', 'yes', 'on'}
     dec_file = DATA_DIR / 'vless_decryption.txt'
     enc_file = DATA_DIR / 'vless_encryption.txt'
@@ -223,9 +231,9 @@ def main():
     inbounds = [
         inbound(ports['xhttp_reality'], 'xhttp', 'reality', uuid, decryption,
                 reality=reality_settings(selected['xhttp'] + ':443', selected['xhttp'], private, sid),
-                xhttp={'path': xhttp_path, 'mode': xhttp_mode}),
+                xhttp=xhttp_settings(xhttp_path, xhttp_mode)),
         inbound(ports['xhttp_tls'], 'xhttp', 'none', uuid, decryption,
-                xhttp={'path': xhttp_path, 'mode': xhttp_mode}),
+                xhttp=xhttp_settings(xhttp_path, xhttp_mode)),
         inbound(ports['vision_reality'], 'raw', 'reality', uuid, decryption,
                 reality=reality_settings(selected['vision'] + ':443', selected['vision'], private, sid),
                 flow='xtls-rprx-vision'),
@@ -234,7 +242,8 @@ def main():
                 grpc={'serviceName': grpc_service}),
     ]
 
-    config = {'log': {'loglevel': os.getenv('XRAY_LOGLEVEL', 'warning')}, 'inbounds': inbounds,
+    loglevel = os.getenv('XRAY_LOGLEVEL', 'info').strip() or 'info'
+    config = {'log': {'loglevel': loglevel}, 'inbounds': inbounds,
               'outbounds': [{'protocol': 'freedom', 'tag': 'direct'}]}
     CONFIG.parent.mkdir(parents=True, exist_ok=True)
     tmp = CONFIG.with_suffix('.json.tmp')
@@ -243,7 +252,7 @@ def main():
     os.replace(tmp, CONFIG)
 
     manifest = {
-        'schema': 2, 'uuid': uuid, 'public_key': public, 'short_id': sid,
+        'schema': 3, 'uuid': uuid, 'public_key': public, 'short_id': sid,
         'encryption': encryption, 'decryption': decryption,
         'vless_encryption_enabled': enable_encryption,
         'reality': {'xhttp': [selected['xhttp']], 'vision': [selected['vision']], 'grpc': [selected['grpc']]},
@@ -256,6 +265,7 @@ def main():
     os.chmod(mf, 0o600)
 
     print('[xray-config-generator] VLESS encryption=%s' % ('enabled' if enable_encryption else 'disabled (compatibility mode)'), flush=True)
+    print('[xray-config-generator] XHTTP mode=%s padding=100-1000 keepalive=20-80s' % xhttp_mode, flush=True)
     print('[xray-config-generator] REALITY profiles: xhttp=%s vision=%s grpc=%s' % (selected['xhttp'], selected['vision'], selected['grpc']), flush=True)
     print('[xray-config-generator] listeners: xhttp_reality=127.0.0.1:%s xhttp_tls=127.0.0.1:%s vision_reality=127.0.0.1:%s grpc_reality=127.0.0.1:%s' % (
         ports['xhttp_reality'], ports['xhttp_tls'], ports['vision_reality'], ports['grpc_reality']), flush=True)
