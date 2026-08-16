@@ -181,7 +181,10 @@ def handle(c):
             elif sni in set(reality.get('xhttp', [])):
                 target = ports['xhttp_reality']
             else:
-                target = ports['xhttp_tls']
+                # Unknown TLS SNI must not silently fall back to the HTTPS/XHTTP
+                # inbound. REALITY remains an explicit SNI-routed TCP service.
+                print('[gateway-router] reject unknown TLS SNI=%s' % (sni or '-'), flush=True)
+                return
             upstream = connect(target)
             relay(c, upstream, initial)
             return
