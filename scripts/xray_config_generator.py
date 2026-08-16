@@ -89,7 +89,7 @@ def candidate_list(name, fallback):
     path = Path(raw) if raw else Path('/opt/xray/config/reality-sni-candidates.txt')
     values = []
     if path.is_file():
-        values = [x.strip() for x in path.read_text(encoding='utf-8').splitlines() if x.strip() and not x.lstrip().startswith('#')]
+        values = [x.strip().lower() for x in path.read_text(encoding='utf-8').splitlines() if x.strip() and not x.lstrip().startswith('#')]
     if not values:
         values = fallback
     return list(dict.fromkeys(values))
@@ -115,41 +115,62 @@ def inbound(port, network, security, uuid, decryption, reality=None, xhttp=None,
     return {'listen': '127.0.0.1', 'port': port, 'protocol': 'vless', 'settings': settings, 'streamSettings': stream}
 
 
-def partition_candidates(all_candidates):
-    """Partition the candidate list into three disjoint REALITY SNI pools.
+def _validate_pools(names, source):
+    seen = {}
+    clean = {}
+    for kind in ('xhttp', 'vision', 'grpc'):
+        values = []
+        for value in names.get(kind, []):
+            value = value.strip().lower()
+            if not value:
+                continue
+            if value in seen and seen[value] != kind:
+                return None, 'REALITY SNI overlap: %s is assigned to both %s and %s' % (value, seen[value], kind)
+            seen[value] = kind
+            if value not in values:
+                values.append(value)
+        clean[kind] = values
+    missing = [kind for kind in ('xhttp', 'vision', 'grpc') if not clean[kind]]
+    if missing:
+        return None, 'missing REALITY SNI pool(s): %s' % ', '.join(missing)
+    return clean, ''
 
-    Explicit protocol-specific env files remain supported. When they are not
-    supplied, candidates are assigned sequentially and never overlap.
+
+def partition_candidates(all_candidates):
+    """Build three disjoint REALITY SNI pools.
+
+    The checked-in master candidate file is authoritative. Legacy
+    protocol-specific environment variables are accepted only when all three
+    overrides form a valid, disjoint set. This prevents stale Railway
+    environment variables from reintroducing an old xhttp/vision collision.
     """
-    defaults = {
+    canonical = {
         'xhttp': all_candidates[0:2],
         'vision': all_candidates[2:4],
         'grpc': all_candidates[4:6],
     }
-    names = {}
-    for kind, env_name in (
-        ('xhttp', 'XHTTP_REALITY_SNI_FILE'),
-        ('vision', 'VISION_REALITY_SNI_FILE'),
-        ('grpc', 'GRPC_REALITY_SNI_FILE'),
-    ):
-        names[kind] = candidate_list(env_name, defaults[kind])
+    if any(not canonical[k] for k in ('xhttp', 'vision', 'grpc')):
+        raise SystemExit('ERROR: canonical REALITY SNI file must provide at least 6 unique entries (2 per protocol)')
 
-    seen = {}
-    for kind, values in names.items():
-        cleaned = []
-        for value in values:
-            if value in seen and seen[value] != kind:
-                raise SystemExit('ERROR: REALITY SNI overlap: %s is assigned to both %s and %s' % (value, seen[value], kind))
-            if value not in seen:
-                seen[value] = kind
-            if value not in cleaned:
-                cleaned.append(value)
-        names[kind] = cleaned
+    override_names = ('XHTTP_REALITY_SNI_FILE', 'VISION_REALITY_SNI_FILE', 'GRPC_REALITY_SNI_FILE')
+    override_present = [name for name in override_names if os.getenv(name, '').strip()]
+    if override_present:
+        overrides = {
+            'xhttp': candidate_list('XHTTP_REALITY_SNI_FILE', []),
+            'vision': candidate_list('VISION_REALITY_SNI_FILE', []),
+            'grpc': candidate_list('GRPC_REALITY_SNI_FILE', []),
+        }
+        valid, error = _validate_pools(overrides, 'environment')
+        if valid:
+            print('[xray-config-generator] using explicit protocol SNI overrides', flush=True)
+            return valid
+        print('[xray-config-generator] WARNING: ignoring invalid/stale SNI environment override: %s' % error, flush=True)
+        print('[xray-config-generator] WARNING: using canonical disjoint SNI pools from reality-sni-candidates.txt', flush=True)
 
-    missing = [kind for kind in ('xhttp', 'vision', 'grpc') if not names[kind]]
-    if missing:
-        raise SystemExit('ERROR: missing REALITY SNI pool(s): %s' % ', '.join(missing))
-    return names
+    valid, error = _validate_pools(canonical, 'canonical')
+    if not valid:
+        raise SystemExit('ERROR: %s' % error)
+    return valid
 
 
 def main():
