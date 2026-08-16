@@ -1,54 +1,72 @@
 # Portable Railway deployment helpers
 
-这个目录只描述 Railway 控制面的可选网络配置。容器本身不依赖旧项目数据，也不需要 Railway API Token。
+这个目录只描述 Railway 控制面的网络配置。容器不依赖旧项目数据，也不需要 Railway API Token。
 
-## 新账户部署
+## 新 Railway 账户：标准配置
 
-```text
-Deploy on Railway
-      ↓
-runtime-discovery
-      ↓
-Xray config generation
-      ↓
-Subscription generation
-      ↓
-Gateway + Xray
-```
-
-首次部署不再因为缺少 Public Domain / TCP Proxy 而故意失败。容器会使用当前可见的 Railway 运行时变量启动健康检查，并把缺失的公网资源记录为未配置。
-
-## 可选网络资源
-
-### Public Domain
+没有自己的 Custom Domain 时，**只手动添加两个资源**：
 
 ```text
-Settings → Networking → Generate Domain
-Target/application port = service PORT
+Settings → Networking
+
+1. Generate Domain
+   Target Port = 8080
+
+2. TCP Proxy
+   Target/Application Port = 8080
 ```
 
-Railway 生成的 `*.up.railway.app` 会在运行时通过 `RAILWAY_PUBLIC_DOMAIN` 被发现。
+不要创建 4 个 Generate Domain。
+不要为四种 Xray 协议分别创建 Railway 公网端口。
+不要把 Railway 随机 TCP external port 写进代码。
 
-### TCP Proxy
+Railway 自动产生：
 
 ```text
-Settings → Networking → TCP Proxy
-Target/application port = service PORT
+<current>.up.railway.app
+<current>.proxy.rlwy.net:<random-external-port>
 ```
 
-Railway 会生成当前实例的 TCP proxy domain 和随机 external port。容器通过：
+容器通过运行时变量自动发现这些值。
+
+## 为什么两个入口足够
 
 ```text
-RAILWAY_TCP_PROXY_DOMAIN
-RAILWAY_TCP_PROXY_PORT
-RAILWAY_TCP_APPLICATION_PORT
+Generate Domain :8080
+        │
+        ▼
+   Gateway :8080
+        │
+        └── HTTP/XHTTP/TLS → 10086
+
+TCP Proxy :8080
+        │
+        ▼
+   Gateway :8080
+        │
+        ├── REALITY SNI A → 10087 XHTTP
+        ├── REALITY SNI B → 10085 Vision
+        └── REALITY SNI C → 10088 gRPC
 ```
 
-动态获取这些值，不会把历史随机端口写进代码。
+一个 TCP Proxy 承载三个 REALITY inbound；Gateway 根据 TLS ClientHello 的 SNI 做纯 TCP passthrough 分流。
 
-## 动态与固定项
+## 自动生成的四个节点
 
-### Railway 动态项
+部署完成后订阅严格生成 4 个节点：
+
+```text
+1. VLESS + XHTTP + TLS
+2. VLESS + XHTTP + REALITY
+3. VLESS + RAW/TCP + REALITY + Vision
+4. VLESS + gRPC + REALITY
+```
+
+REALITY SNI 候选池用于内部候选/容错，不会把每个 SNI 扩展成额外订阅节点。
+
+## 动态运行时值
+
+容器读取：
 
 ```text
 PORT
@@ -64,41 +82,57 @@ RAILWAY_REPLICA_REGION
 RAILWAY_DEPLOYMENT_ID
 ```
 
-### 用户自己的固定项（可选）
+其中：
 
 ```text
-CUSTOM_DOMAIN
-GRPC_DOMAIN
-REALITY_TARGET
-XHTTP_PATH
-GRPC_SERVICE_NAME
+*.up.railway.app       → Railway 当前 Public Domain
+*.proxy.rlwy.net       → Railway 当前 TCP Proxy Domain
+random external port   → Railway 当前 TCP Proxy Port
 ```
 
-用户自己的域名不属于 Railway 随机运行时数据，因此不应该由 runtime discovery 猜测。
+这些值全部属于当前实例 runtime state，不属于 GitHub 母版。
 
-## Runtime 文件
-
-容器启动后会产生：
+## 本地 Xray 端口
 
 ```text
-/data/runtime.json
-/data/xray-manifest.json
-/data/vless.txt
-/data/subscription.txt
-/data/subscription_endpoints.txt
+10087  VLESS + XHTTP + REALITY
+10086  VLESS + XHTTP + TLS
+10085  VLESS + RAW/TCP + REALITY + Vision
+10088  VLESS + gRPC + REALITY
 ```
 
-这些都是当前实例的运行时产物，不应提交到 Git。
+四个端口只监听 `127.0.0.1`。
 
 ## 验证
 
-网络资源配置完成后可以运行：
+网络资源添加完成后，可使用：
 
 ```bash
 ./deploy/verify.sh
 ```
 
-它会读取当前环境变量，不要求固定 8080，也不会验证历史域名或历史 TCP 端口。
+验证目标：
+
+```text
+1. Public Domain → 8080
+2. TCP Proxy → 8080
+3. TCP external port 为 Railway 当前随机值
+4. /health = 200
+5. /ready = 200
+6. /data/subscription.txt 包含 4 个节点
+7. 4 个节点地址均使用当前 Railway runtime 信息
+```
+
+## Custom Domain
+
+Custom Domain 是可选扩展，不是四协议运行的前置条件。
+
+没有自己的域名时，不需要配置：
+
+```text
+CUSTOM_DOMAIN
+GRPC_DOMAIN
+```
 
 ## 安全
 
