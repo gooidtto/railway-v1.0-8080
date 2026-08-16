@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import base64
 import json
 import os
@@ -53,6 +52,7 @@ def main():
         for kind, names in manifest['reality'].items():
             if not names:
                 continue
+            address = d.get('grpc_domain') or r['tcp_proxy_domain'] if kind == 'grpc' else r['tcp_proxy_domain']
             for sni in names:
                 if kind == 'xhttp':
                     network = 'xhttp'
@@ -65,17 +65,8 @@ def main():
                     extra = {'serviceName': manifest['grpc_service_name'], 'alpn': 'h2'}
                 params = {**common, 'security': 'reality', 'type': network,
                           'fp': manifest['fingerprint'], 'sni': sni, 'pbk': public_key, 'sid': sid, **extra}
-                label = 'railway-%s-reality-%s' % (kind, sni)
-                nodes.append(vless(uuid, r['tcp_proxy_domain'], r['tcp_proxy_port'], params, label))
-
-    # Optional user-owned custom TCP domain. Railway still requires the generated TCP proxy port.
-    custom_tcp = d.get('custom_domain', '')
-    if custom_tcp and r['tcp_proxy_port'] and manifest['reality']['grpc']:
-        sni = manifest['reality']['grpc'][0]
-        nodes.append(vless(uuid, custom_tcp, r['tcp_proxy_port'],
-            {**common, 'security': 'reality', 'type': 'grpc', 'fp': manifest['fingerprint'],
-             'sni': sni, 'pbk': public_key, 'sid': sid, 'serviceName': manifest['grpc_service_name'], 'alpn': 'h2'},
-            'custom-grpc-reality'))
+                label = '%s-%s-reality-%s' % ('custom-grpc' if kind == 'grpc' and d.get('grpc_domain') else 'railway', kind, sni)
+                nodes.append(vless(uuid, address, r['tcp_proxy_port'], params, label))
 
     text = '\n'.join(nodes) + ('\n' if nodes else '')
     encoded = base64.b64encode(text.encode()).decode() + '\n'
