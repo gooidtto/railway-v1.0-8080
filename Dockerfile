@@ -18,28 +18,26 @@ COPY site/ /opt/xray/site/
 RUN chmod 0755 /usr/local/bin/xray /opt/xray/scripts/*.sh /opt/xray/scripts/*.py \
     && chmod 0644 /opt/xray/config/reality-sni-candidates.txt /opt/xray/site/*
 
-# Railway supplies PORT, RAILWAY_PUBLIC_DOMAIN and (when configured) TCP proxy values.
-# Do not hard-code any deployment-specific hostname in the image.
+# Railway supplies PORT and, when configured, the public/TCP networking values.
+# No deployment-specific Railway hostname or random external port is embedded.
 ENV PORT=8080 \
-    GATEWAY_PORT=8080 \
-    XRAY_PORT=10087 \
-    XRAY_HTTP_PORT=10086 \
-    XRAY_LISTEN=127.0.0.1 \
-    XRAY_LOGLEVEL=info \
-    XRAY_READY_FILE=/data/.xray-ready \
+    XRAY_XHTTP_REALITY_PORT=10087 \
+    XRAY_XHTTP_TLS_PORT=10086 \
+    XRAY_VISION_REALITY_PORT=10085 \
+    XRAY_GRPC_REALITY_PORT=10088 \
+    XRAY_LOGLEVEL=warning \
     DATA_DIR=/data \
     XRAY_CONFIG=/etc/xray/config.json \
     REALITY_TARGET=www.cloudflare.com:443 \
     REALITY_FINGERPRINT=chrome \
     XHTTP_PATH=/xhttp \
     XHTTP_MODE=auto \
-    SHORT_ID=50175c035ee132 \
-    REALITY_SNI_LIMIT=7 \
+    GRPC_SERVICE_NAME=grpc \
     REALITY_SNI_CANDIDATES_FILE=/opt/xray/config/reality-sni-candidates.txt \
     SUBSCRIPTION_FILE=/data/subscription.txt \
     SUBSCRIPTION_TOKEN_FILE=/data/subscription_token.txt
 
-EXPOSE 8080 10087
+EXPOSE 8080 10085 10086 10087 10088
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=5 \
     CMD python3 -c "import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:%s/health' % os.getenv('PORT','8080'), timeout=3).read()"
