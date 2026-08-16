@@ -1,311 +1,110 @@
 #!/usr/bin/env python3
-import json
-import os
-import select
-import socket
-import threading
+import json, os, select, socket, threading
 from pathlib import Path
 from urllib.parse import urlsplit
-
-DATA_DIR = Path(os.getenv('DATA_DIR', '/data'))
-RUNTIME_FILE = DATA_DIR / 'runtime.json'
-MANIFEST_FILE = DATA_DIR / 'xray-manifest.json'
-SITE_DIR = Path(os.getenv('SITE_DIR', '/opt/xray/site')).resolve()
-SUB_FILE = DATA_DIR / 'subscription.txt'
-TOKEN_FILE = DATA_DIR / 'subscription_token.txt'
-READY_FILE = DATA_DIR / '.xray-ready'
-DEBUG = os.getenv('GATEWAY_DEBUG', '1').lower() not in {'0', 'false', 'no'}
-
-
-def load(path, default=None):
-    try:
-        return json.loads(path.read_text(encoding='utf-8'))
-    except (OSError, ValueError):
-        return default
-
-
-def log(message):
-    if DEBUG:
-        print('[gateway-router] %s' % message, flush=True)
-
-
+DATA_DIR=Path(os.getenv("DATA_DIR","/data")); RUNTIME_FILE=DATA_DIR/"runtime.json"; MANIFEST_FILE=DATA_DIR/"xray-manifest.json"; SITE_DIR=Path(os.getenv("SITE_DIR","/opt/xray/site")).resolve(); SUB_FILE=DATA_DIR/"subscription.txt"; TOKEN_FILE=DATA_DIR/"subscription_token.txt"; READY_FILE=DATA_DIR/".xray-ready"
+def load(path,default=None):
+    try:return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError,ValueError):return default
+def log(m):print("[gateway-router] "+m,flush=True)
 def tune(s):
-    opts = ((socket.IPPROTO_TCP, socket.TCP_NODELAY, 1),
-            (socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1))
-    for level, opt, val in opts:
-        try:
-            s.setsockopt(level, opt, val)
-        except OSError:
-            pass
-    try:
-        s.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, 60)
-        s.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, 20)
-        s.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, 3)
-    except OSError:
-        pass
-
-
-def http_response(status, ctype, body, head=False):
-    if isinstance(body, str):
-        body = body.encode()
-    reason = {200: 'OK', 404: 'Not Found', 405: 'Method Not Allowed', 503: 'Service Unavailable'}.get(status, 'OK')
-    h = ('HTTP/1.1 %s %s\r\nContent-Type: %s\r\nContent-Length: %d\r\nConnection: keep-alive\r\nKeep-Alive: timeout=30, max=1000\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\n\r\n') % (status, reason, ctype, len(body))
-    return h.encode() if head else h.encode() + body
-
-
+    for level,opt,val in ((socket.IPPROTO_TCP,socket.TCP_NODELAY,1),(socket.SOL_SOCKET,socket.SO_KEEPALIVE,1)):
+        try:s.setsockopt(level,opt,val)
+        except OSError:pass
+    for opt,val in ((getattr(socket,"TCP_KEEPIDLE",None),60),(getattr(socket,"TCP_KEEPINTVL",None),20),(getattr(socket,"TCP_KEEPCNT",None),3)):
+        if opt is not None:
+            try:s.setsockopt(socket.IPPROTO_TCP,opt,val)
+            except OSError:pass
+def response(status,ctype,body,head=False):
+    if isinstance(body,str):body=body.encode()
+    reason={200:"OK",404:"Not Found",405:"Method Not Allowed",503:"Service Unavailable"}.get(status,"OK")
+    h=("HTTP/1.1 %s %s\r\nContent-Type: %s\r\nContent-Length: %d\r\nConnection: close\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\n\r\n")%(status,reason,ctype,len(body));return h.encode() if head else h.encode()+body
+def strip_proxy(data):
+    if data.startswith(b"PROXY "):
+        end=data.find(b"\r\n")
+        if end>=0:return data[end+2:]
+    sig=b"\r\n\r\n\x00\r\nQUIT\n"
+    if data.startswith(sig) and len(data)>=16:
+        total=16+int.from_bytes(data[14:16],"big")
+        if len(data)>=total:return data[total:]
+    return data
+def classify(data):
+    raw=strip_proxy(data)
+    if raw[:1]==b"\x16" and len(raw)>=3 and raw[1]==3:return raw,"tls"
+    if b"\r\n\r\n" in raw or b"\n\n" in raw:return raw,"http"
+    methods=(b"GET ",b"HEAD ",b"POST ",b"PUT ",b"DELETE ",b"OPTIONS ",b"PATCH ",b"CONNECT ")
+    if raw.startswith(methods):return raw,"http"
+    return raw,"tcp"
+def recv_initial(s,timeout=10):
+    s.settimeout(timeout);data=bytearray()
+    while len(data)<16384:
+        chunk=s.recv(min(4096,16384-len(data)))
+        if not chunk:break
+        data.extend(chunk);raw,kind=classify(bytes(data))
+        if raw and kind in ("tls","http","tcp"):return raw,kind
+    return classify(bytes(data))
+def relay(a,b,initial=b""):
+    tune(a);tune(b);a.settimeout(None);b.settimeout(None)
+    if initial:b.sendall(initial)
+    c2s,s2c=len(initial),0
+    while True:
+        readable,_,bad=select.select((a,b),(),(a,b),300)
+        if bad or not readable:return c2s,s2c
+        for src in readable:
+            dst=b if src is a else a;chunk=src.recv(65536)
+            if not chunk:return c2s,s2c
+            dst.sendall(chunk)
+            if src is a:c2s+=len(chunk)
+            else:s2c+=len(chunk)
+def connect(port):
+    s=socket.create_connection(("127.0.0.1",int(port)),timeout=10);tune(s);return s
 def parse_http(data):
     try:
-        head = data.split(b'\r\n\r\n', 1)[0]
-        first = head.split(b'\r\n', 1)[0].decode('ascii')
-        parts = first.split(' ', 2)
-        if len(parts) != 3 or not parts[2].startswith('HTTP/'):
-            return None
-        target = urlsplit(parts[1])
-        return parts[0], target.path or '/', target.netloc
-    except (UnicodeDecodeError, ValueError):
-        return None
-
-
-def strip_proxy_header(data):
-    if data.startswith(b'PROXY '):
-        end = data.find(b'\r\n')
-        if end >= 0:
-            return data[end + 2:]
-    sig = b'\r\n\r\n\x00\r\nQUIT\n'
-    if data.startswith(sig) and len(data) >= 16:
-        length = int.from_bytes(data[14:16], 'big')
-        end = 16 + length
-        if len(data) >= end:
-            return data[end:]
-    return data
-
-
-def tls_handshake_bytes(data):
-    raw = strip_proxy_header(data)
-    if len(raw) < 5 or raw[0] != 0x16 or raw[1] != 0x03:
-        return None
-    pos = 0
-    handshake = bytearray()
-    while pos + 5 <= len(raw):
-        if raw[pos] != 0x16 or raw[pos + 1] != 0x03:
-            break
-        record_len = int.from_bytes(raw[pos + 3:pos + 5], 'big')
-        if record_len <= 0:
-            return None
-        end = pos + 5 + record_len
-        if end > len(raw):
-            return None
-        handshake.extend(raw[pos + 5:end])
-        if len(handshake) >= 4:
-            hello_len = int.from_bytes(handshake[1:4], 'big')
-            if handshake[0] != 0x01:
-                return None
-            if len(handshake) >= 4 + hello_len:
-                return bytes(handshake[:4 + hello_len])
-        pos = end
-    return None
-
-
-def tls_sni(data):
-    try:
-        hello = tls_handshake_bytes(data)
-        if not hello or hello[0] != 0x01:
-            return ''
-        p = 4
-        if p + 35 > len(hello):
-            return ''
-        p += 2 + 32
-        sid_len = hello[p]
-        p += 1 + sid_len
-        if p + 2 > len(hello): return ''
-        cs_len = int.from_bytes(hello[p:p + 2], 'big'); p += 2 + cs_len
-        if p + 1 > len(hello): return ''
-        comp_len = hello[p]; p += 1 + comp_len
-        if p + 2 > len(hello): return ''
-        ext_len = int.from_bytes(hello[p:p + 2], 'big'); p += 2
-        end = min(len(hello), p + ext_len)
-        while p + 4 <= end:
-            typ = int.from_bytes(hello[p:p + 2], 'big')
-            ln = int.from_bytes(hello[p + 2:p + 4], 'big'); p += 4
-            if p + ln > end: return ''
-            if typ == 0:
-                block = hello[p:p + ln]
-                if len(block) < 2: return ''
-                q = 2
-                limit = min(len(block), 2 + int.from_bytes(block[:2], 'big'))
-                while q + 3 <= limit:
-                    name_type = block[q]
-                    name_len = int.from_bytes(block[q + 1:q + 3], 'big')
-                    q += 3
-                    if q + name_len > limit: return ''
-                    if name_type == 0:
-                        return block[q:q + name_len].decode('idna').lower()
-                    q += name_len
-            p += ln
-    except (IndexError, ValueError, UnicodeError):
-        return ''
-    return ''
-
-
-def recv_initial(s, timeout=8):
-    s.settimeout(timeout)
-    data = bytearray()
-    while len(data) < 131072:
-        chunk = s.recv(min(8192, 131072 - len(data)))
-        if not chunk:
-            break
-        data.extend(chunk)
-        raw = strip_proxy_header(bytes(data))
-        if b'\r\n\r\n' in raw:
-            return raw
-        if len(raw) >= 5 and raw[0] == 0x16 and raw[1] == 0x03 and tls_handshake_bytes(raw) is not None:
-            return raw
-        if len(raw) >= 8 and not raw.startswith((b'GET ', b'POST ', b'HEAD ', b'PUT ', b'OPTIONS ', b'PATCH ', b'DELETE ', b'CONNECT ')) and raw[0] != 0x16:
-            return raw
-    return strip_proxy_header(bytes(data))
-
-
-def relay(a, b, initial=b''):
-    tune(a); tune(b)
-    a.settimeout(None); b.settimeout(None)
-    if initial:
-        b.sendall(initial)
-    sockets = (a, b)
-    log('relay-established local=%s upstream=%s initial=%d' % (a.getpeername() if a else '-', b.getpeername() if b else '-', len(initial)))
-    open_a = open_b = True
-    while open_a or open_b:
-        readable, _, _ = select.select(sockets, (), (), 120)
-        if not readable:
-            log('relay-idle-timeout'); break
-        for src in readable:
-            dst = b if src is a else a
-            try:
-                chunk = src.recv(65536)
-            except OSError:
-                chunk = b''
-            if not chunk:
-                if src is a:
-                    open_a = False
-                else:
-                    open_b = False
-                try:
-                    dst.shutdown(socket.SHUT_WR)
-                except OSError:
-                    pass
-                continue
-            dst.sendall(chunk)
-
-
-def connect(port):
-    s = socket.create_connection(('127.0.0.1', int(port)), timeout=8)
-    tune(s)
-    return s
-
-
-def website(c, method, path):
-    if path == '/health':
-        c.sendall(http_response(200, 'text/plain; charset=utf-8', 'OK\n', method == 'HEAD')); return True
-    if path == '/ready':
-        ok = READY_FILE.exists(); c.sendall(http_response(200 if ok else 503, 'text/plain; charset=utf-8', 'READY\n' if ok else 'NOT READY\n', method == 'HEAD')); return True
-    if path.startswith('/sub/'):
-        token = TOKEN_FILE.read_text().strip() if TOKEN_FILE.is_file() else ''
-        if token and path == '/sub/' + token and SUB_FILE.is_file():
-            body = SUB_FILE.read_bytes(); log('http subscription served bytes=%d' % len(body)); c.sendall(http_response(200, 'text/plain; charset=utf-8', body, method == 'HEAD'))
-        else:
-            c.sendall(http_response(404, 'text/plain; charset=utf-8', 'Not Found\n', method == 'HEAD'))
+        method,target,version=data.split(b"\r\n",1)[0].decode("ascii").split(" ",2)
+        if not version.startswith("HTTP/"):return None
+        return method,urlsplit(target).path or "/"
+    except (UnicodeDecodeError,ValueError):return None
+def website(c,method,path):
+    if path=="/health":c.sendall(response(200,"text/plain; charset=utf-8","OK\n",method=="HEAD"));return True
+    if path=="/ready":
+        ok=READY_FILE.exists();c.sendall(response(200 if ok else 503,"text/plain; charset=utf-8","READY\n" if ok else "NOT READY\n",method=="HEAD"));return True
+    if path.startswith("/sub/"):
+        token=TOKEN_FILE.read_text().strip() if TOKEN_FILE.is_file() else ""
+        if token and path=="/sub/"+token and SUB_FILE.is_file():c.sendall(response(200,"text/plain; charset=utf-8",SUB_FILE.read_bytes(),method=="HEAD"))
+        else:c.sendall(response(404,"text/plain; charset=utf-8","Not Found\n",method=="HEAD"))
         return True
-    if path == '/sub':
-        c.sendall(http_response(404, 'text/plain; charset=utf-8', 'Not Found\n', method == 'HEAD')); return True
-    if method not in {'GET', 'HEAD'}:
-        c.sendall(http_response(405, 'text/plain; charset=utf-8', 'Method Not Allowed\n')); return True
-    rel = 'index.html' if path == '/' else path.lstrip('/')
-    target = (SITE_DIR / rel).resolve()
-    if SITE_DIR not in target.parents and target != SITE_DIR or not target.is_file():
-        c.sendall(http_response(404, 'text/plain; charset=utf-8', 'Not Found\n', method == 'HEAD')); return True
-    body = target.read_bytes()
-    types = {'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'application/javascript; charset=utf-8','.json':'application/json','.svg':'image/svg+xml','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg'}
-    c.sendall(http_response(200, types.get(target.suffix.lower(), 'application/octet-stream'), body, method == 'HEAD')); return True
-
-
-def route_table(runtime, manifest):
-    routes = {}
-    for kind, target_key in (('xhttp', 'xhttp_reality'), ('vision', 'vision_reality'), ('grpc', 'grpc_reality')):
-        for sni in manifest.get('reality', {}).get(kind, []):
-            key = sni.strip().lower()
-            if not key: continue
-            if key in routes:
-                raise SystemExit('[gateway-router] ERROR: duplicate REALITY SNI=%s (%s and %s)' % (key, routes[key][0], kind))
-            routes[key] = (kind, runtime['listeners'][target_key])
-    public_domain = runtime.get('railway', {}).get('public_domain', '').strip().lower()
-    if public_domain:
-        if public_domain in routes:
-            raise SystemExit('[gateway-router] ERROR: public domain overlaps REALITY SNI: %s' % public_domain)
-        routes[public_domain] = ('xhttp-tls', runtime['listeners']['xhttp_tls'])
-    return routes
-
-
-def handle(c, addr):
-    upstream = None
-    log('accepted peer=%s:%s' % addr[:2])
+    if path=="/sub":c.sendall(response(404,"text/plain; charset=utf-8","Not Found\n",method=="HEAD"));return True
+    if method not in {"GET","HEAD"}:c.sendall(response(405,"text/plain; charset=utf-8","Method Not Allowed\n"));return True
+    rel="index.html" if path=="/" else path.lstrip("/");target=(SITE_DIR/rel).resolve()
+    if SITE_DIR not in target.parents and target!=SITE_DIR or not target.is_file():c.sendall(response(404,"text/plain; charset=utf-8","Not Found\n",method=="HEAD"));return True
+    body=target.read_bytes();types={".html":"text/html; charset=utf-8",".css":"text/css; charset=utf-8",".js":"application/javascript; charset=utf-8",".json":"application/json; charset=utf-8",".svg":"image/svg+xml",".png":"image/png",".jpg":"image/jpeg",".jpeg":"image/jpeg"};c.sendall(response(200,types.get(target.suffix.lower(),"application/octet-stream"),body,method=="HEAD"));return True
+def handle(c,addr):
+    up=None;peer="%s:%s"%addr[:2];log("ACCEPT peer=%s ready=%s"%(peer,READY_FILE.exists()))
     try:
-        initial = recv_initial(c)
-        if not initial:
-            log('close-empty peer=%s:%s' % addr[:2]); return
-        runtime = load(RUNTIME_FILE, {})
-        manifest = load(MANIFEST_FILE, {})
-        ports = runtime.get('listeners', {})
-        routes = route_table(runtime, manifest)
-        log('initial peer=%s:%s bytes=%d first=0x%02x' % (addr[0], addr[1], len(initial), initial[0]))
-        if initial[:1] == b'\x16' and len(initial) >= 3:
-            sni = tls_sni(initial)
-            route = routes.get(sni)
-            if not route:
-                log('reject unknown TLS SNI=%s' % (sni or '-')); return
-            route_name, target = route
-            log('tls sni=%s route=%s target=%s' % (sni or '-', route_name, target))
-            upstream = connect(target)
-            log('upstream-connected route=%s target=%s' % (route_name, target))
-            relay(c, upstream, initial)
-            return
-        parsed = parse_http(initial)
+        initial,kind=recv_initial(c)
+        if not initial:log("CLOSE peer=%s reason=no-initial-data"%peer);return
+        ports=load(RUNTIME_FILE,{}).get("listeners",{});reality=ports.get("xhttp_reality");xhttp=ports.get("xhttp_tls")
+        if not reality or not xhttp:log("ERROR peer=%s missing Xray listener ports"%peer);return
+        log("CLASSIFY peer=%s kind=%s bytes=%d head=%s"%(peer,kind,len(initial),initial[:12].hex()))
+        if kind=="tls":
+            up=connect(reality);log("UPSTREAM_CONNECTED peer=%s target=127.0.0.1:%s kind=tls-reality"%(peer,reality));a,b=relay(c,up,initial);log("RELAY_END peer=%s kind=tls-reality c2s=%d s2c=%d"%(peer,a,b));return
+        parsed=parse_http(initial)
         if parsed:
-            method, path, host = parsed
-            log('http method=%s host=%s path=%s' % (method, host or '-', path))
-            xhttp_path = manifest.get('xhttp_path', '/xhttp')
-            if path != xhttp_path and not path.startswith(xhttp_path + '/'):
-                website(c, method, path); return
-            upstream = connect(ports['xhttp_tls'])
-            log('http xhttp target=%s' % ports['xhttp_tls'])
-            relay(c, upstream, initial)
-            return
-        log('reject unknown opaque TCP peer=%s:%s first=0x%02x' % (addr[0], addr[1], initial[0]))
-    except (OSError, TimeoutError) as exc:
-        log('error peer=%s:%s %s' % (addr[0], addr[1], exc))
+            method,path=parsed;log("HTTP peer=%s method=%s path=%s"%(peer,method,path));xpath=load(MANIFEST_FILE,{}).get("xhttp_path","/xhttp")
+            if path!=xpath and not path.startswith(xpath+"/"):website(c,method,path);return
+            up=connect(xhttp);log("UPSTREAM_CONNECTED peer=%s target=127.0.0.1:%s kind=http-xhttp"%(peer,xhttp));a,b=relay(c,up,initial);log("RELAY_END peer=%s kind=http-xhttp c2s=%d s2c=%d"%(peer,a,b));return
+        log("REJECT peer=%s kind=%s"%(peer,kind))
+    except (OSError,TimeoutError) as exc:log("ERROR peer=%s type=%s detail=%s"%(peer,type(exc).__name__,exc))
     finally:
-        for s in (upstream, c):
-            if s:
-                try: s.close()
-                except OSError: pass
-
-
+        if up:
+            try:up.close()
+            except OSError:pass
+        try:c.close()
+        except OSError:pass
 def main():
-    runtime = load(RUNTIME_FILE, {})
-    port = int(runtime.get('listeners', {}).get('gateway', os.getenv('PORT', '8080')))
-    routes = route_table(runtime, load(MANIFEST_FILE, {}))
-    log('route-table entries=%d' % len(routes))
-    for sni, (kind, target) in sorted(routes.items()):
-        log('route sni=%s -> %s:%s' % (sni, kind, target))
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        tune(s)
-        s.bind(('0.0.0.0', port))
-        s.listen(1024)
-        print('[gateway-router] listening=0.0.0.0:%d' % port, flush=True)
+    runtime=load(RUNTIME_FILE,{}) or {};port=int(runtime.get("listeners",{}).get("gateway",os.getenv("PORT","8080")))
+    with socket.socket(socket.AF_INET,socket.SOCK_STREAM) as s:
+        s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1);s.bind(("0.0.0.0",port));s.listen(256);log("LISTEN 0.0.0.0:%d"%port)
         while True:
-            c, addr = s.accept()
-            tune(c)
-            threading.Thread(target=handle, args=(c, addr), daemon=True).start()
-
-
-if __name__ == '__main__':
-    main()
+            c,addr=s.accept();threading.Thread(target=handle,args=(c,addr),daemon=True).start()
+if __name__=="__main__":main()
