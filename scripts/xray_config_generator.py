@@ -41,18 +41,39 @@ def make_uuid():
 
 
 def make_reality():
+    """Parse both legacy and current Xray x25519 output formats.
+
+    Legacy:
+      Private key: ...
+      Public key: ...
+
+    Current Xray (25.3.6+):
+      PrivateKey: ...
+      Password: ...
+      Hash32: ...
+
+    Password is the value used as the REALITY public key on clients.
+    """
     out = xray(['x25519'])
-    private = public = ''
+    values = {}
     for line in out.splitlines():
         if ':' not in line:
             continue
-        k, v = [x.strip() for x in line.split(':', 1)]
-        if k.lower().startswith('private'):
-            private = v
-        elif k.lower() in ('password', 'public key', 'publickey'):
-            public = v
+        key, value = [x.strip() for x in line.split(':', 1)]
+        values[key.lower().replace(' ', '')] = value
+
+    private = values.get('privatekey', '')
+    public = (
+        values.get('publickey', '')
+        or values.get('password(publickey)', '')
+        or values.get('password', '')
+    )
+
     if not private or not public:
-        raise SystemExit('ERROR: unable to parse xray x25519 output')
+        raise SystemExit(
+            'ERROR: unable to parse xray x25519 output; '
+            'expected Private key/Public key or PrivateKey/Password'
+        )
     return private, public
 
 
