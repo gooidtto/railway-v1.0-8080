@@ -1,110 +1,113 @@
 # Portable Railway deployment helpers
 
-This directory documents the Railway control-plane prerequisites for the portable deployment. The supported first-deployment flow is intentionally browser-based; no local computer, Railway CLI, or Railway API token is required.
+这个目录只描述 Railway 控制面的可选网络配置。容器本身不依赖旧项目数据，也不需要 Railway API Token。
 
-## Supported first-deployment flow
+## 新账户部署
 
 ```text
-README
-  ↓
 Deploy on Railway
-  ↓
-Select repository
-  ↓
-Deploy Repo
-  ↓
-First deployment may fail
-  ↓
+      ↓
+runtime-discovery
+      ↓
+Xray config generation
+      ↓
+Subscription generation
+      ↓
+Gateway + Xray
+```
+
+首次部署不再因为缺少 Public Domain / TCP Proxy 而故意失败。容器会使用当前可见的 Railway 运行时变量启动健康检查，并把缺失的公网资源记录为未配置。
+
+## 可选网络资源
+
+### Public Domain
+
+```text
 Settings → Networking → Generate Domain
-  target/application port = 8080
-  ↓
+Target/application port = service PORT
+```
+
+Railway 生成的 `*.up.railway.app` 会在运行时通过 `RAILWAY_PUBLIC_DOMAIN` 被发现。
+
+### TCP Proxy
+
+```text
 Settings → Networking → TCP Proxy
-  target/application port = 8080
-  ↓
-Railway generates:
-  <current>.up.railway.app
-  <current>.proxy.rlwy.net:<RANDOM>
-  ↓
-Click Deploy / Redeploy again
-  ↓
-Normal startup
+Target/application port = service PORT
 ```
 
-The first failure is expected when the service has not yet received Railway networking resources. `scripts/start.sh` fails fast with an explicit message instead of inventing a hostname/port or reusing an old deployment value.
-
-## Fixed target vs dynamic values
-
-Fixed:
+Railway 会生成当前实例的 TCP proxy domain 和随机 external port。容器通过：
 
 ```text
-Gateway / Public Domain target = 8080
-TCP Proxy application target   = 8080
+RAILWAY_TCP_PROXY_DOMAIN
+RAILWAY_TCP_PROXY_PORT
+RAILWAY_TCP_APPLICATION_PORT
 ```
 
-Dynamic per Railway deployment:
+动态获取这些值，不会把历史随机端口写进代码。
+
+## 动态与固定项
+
+### Railway 动态项
 
 ```text
+PORT
 RAILWAY_PUBLIC_DOMAIN
 RAILWAY_TCP_PROXY_DOMAIN
 RAILWAY_TCP_PROXY_PORT
+RAILWAY_TCP_APPLICATION_PORT
+RAILWAY_PROJECT_ID
+RAILWAY_ENVIRONMENT_ID
+RAILWAY_SERVICE_ID
+RAILWAY_REPLICA_ID
+RAILWAY_REPLICA_REGION
+RAILWAY_DEPLOYMENT_ID
 ```
 
-`RAILWAY_TCP_PROXY_PORT` is assigned by Railway and must never be hard-coded. A value such as `42827` belongs only to one historical deployment.
-
-## Runtime values
-
-After the manual networking steps and the next Deploy/Redeploy, the container consumes:
+### 用户自己的固定项（可选）
 
 ```text
-RAILWAY_PUBLIC_DOMAIN
-RAILWAY_TCP_PROXY_DOMAIN
-RAILWAY_TCP_PROXY_PORT
-RAILWAY_TCP_APPLICATION_PORT=8080
+CUSTOM_DOMAIN
+GRPC_DOMAIN
+REALITY_TARGET
+XHTTP_PATH
+GRPC_SERVICE_NAME
 ```
 
-Only then does `scripts/start.sh` generate the runtime identity/configuration and subscription endpoints.
+用户自己的域名不属于 Railway 随机运行时数据，因此不应该由 runtime discovery 猜测。
 
-## Subscription contract
+## Runtime 文件
+
+容器启动后会产生：
 
 ```text
-PRIMARY
-https://<current Railway public domain>/sub/<current token>
-
-FALLBACK
-http://<current Railway TCP proxy domain>:<current Railway TCP proxy port>/sub/<current token>
+/data/runtime.json
+/data/xray-manifest.json
+/data/vless.txt
+/data/subscription.txt
+/data/subscription_endpoints.txt
 ```
 
-The placeholders above are documentation notation only. The running instance replaces them with the current Railway-generated values.
+这些都是当前实例的运行时产物，不应提交到 Git。
 
-The seven REALITY/XHTTP nodes use the current TCP Proxy domain and current Railway-assigned external port.
+## 验证
 
-## Verification
+网络资源配置完成后可以运行：
 
-After the second deployment becomes healthy, verify:
-
-```text
-1. Public Domain exists and targets 8080
-2. TCP Proxy exists and targets 8080
-3. TCP Proxy external port is Railway-generated
-4. /health returns 200
-5. /ready returns 200
-6. Subscription returns 8 nodes
-7. Primary uses the current *.up.railway.app domain
-8. Fallback uses the current *.proxy.rlwy.net:<random-port>
-9. HTTPS/XHTTP client node works
-10. REALITY/XHTTP client nodes work
+```bash
+./deploy/verify.sh
 ```
 
-Use `deploy/verify.sh` only as an optional post-deployment diagnostic. It is not required to start the application.
+它会读取当前环境变量，不要求固定 8080，也不会验证历史域名或历史 TCP 端口。
 
-## Security
+## 安全
 
-The application does not require a Railway API token.
+应用不需要 Railway API Token。
 
-Never commit:
+绝不要提交：
 
-- `RAILWAY_API_TOKEN`
-- Railway project/service/environment tokens
-- UUIDs or REALITY private keys
-- subscription tokens
-- `/data` runtime files
+- Railway API Token
+- UUID
+- REALITY private key
+- subscription token
+- `/data` runtime 文件
