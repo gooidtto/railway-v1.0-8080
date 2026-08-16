@@ -59,8 +59,6 @@ def parse_http(data):
 
 
 def strip_proxy_header(data):
-    # Railway normally passes raw TCP. Support PROXY v1/v2 as well so an
-    # upstream edge cannot corrupt TLS ClientHello/SNI parsing.
     if data.startswith(b'PROXY '):
         end = data.find(b'\r\n')
         if end >= 0:
@@ -204,13 +202,15 @@ def handle(c, addr):
     log('accepted peer=%s:%s' % addr[:2])
     try:
         initial = recv_initial(c)
-        if not initial: log('close-empty peer=%s:%s' % addr[:2]); return
+        if not initial:
+            log('close-empty peer=%s:%s' % addr[:2]); return
         runtime = load(RUNTIME_FILE, {}); manifest = load(MANIFEST_FILE, {})
         ports = runtime.get('listeners', {}); routes = route_table(runtime, manifest)
         log('initial peer=%s:%s bytes=%d first=0x%02x' % (addr[0], addr[1], len(initial), initial[0]))
         if initial[:1] == b'\x16' and len(initial) >= 3:
             sni = tls_sni(initial); route = routes.get(sni)
-            if not route: log('reject unknown TLS SNI=%s' % (sni or '-')); return
+            if not route:
+                log('reject unknown TLS SNI=%s' % (sni or '-')); return
             route_name, target = route
             log('tls sni=%s route=%s target=%s' % (sni or '-', route_name, target))
             upstream = connect(target); relay(c, upstream, initial); return
@@ -222,7 +222,7 @@ def handle(c, addr):
             if path != xhttp_path and not path.startswith(xhttp_path + '/'):
                 website(c, method, path); return
             upstream = connect(ports['xhttp_tls']); log('http xhttp target=%s' % ports['xhttp_tls']); relay(c, upstream, initial); return
-        upstream = connect(ports['vision_reality']); log('raw fallback target=%s' % ports['vision_reality']); relay(c, upstream, initial)
+        log('reject unknown opaque TCP peer=%s:%s first=0x%02x' % (addr[0], addr[1], initial[0]))
     except (OSError, TimeoutError) as exc:
         log('error peer=%s:%s %s' % (addr[0], addr[1], exc))
     finally:
