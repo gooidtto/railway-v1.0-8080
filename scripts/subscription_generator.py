@@ -43,7 +43,6 @@ def main():
     common = {'encryption': enc}
     nodes = []
 
-    # Node 1: Railway Public Domain -> Gateway HTTP -> XHTTP/TLS inbound.
     if r['public_domain']:
         nodes.append(vless(
             uuid,
@@ -55,9 +54,6 @@ def main():
              'mode': manifest['xhttp_mode']},
             'railway-xhttp-tls'))
 
-    # Nodes 2-4: one TCP Proxy carries all three end-to-end REALITY transports.
-    # Each protocol gets exactly one subscription node; the SNI pool is an
-    # internal failover/candidate pool, not a multiplier for node count.
     if r['tcp_proxy_domain'] and r['tcp_proxy_port']:
         profiles = (
             ('xhttp', 'xhttp', {'path': manifest['xhttp_path'], 'mode': manifest['xhttp_mode']}),
@@ -102,7 +98,10 @@ def main():
         urls.append('PRIMARY=https://%s/sub/%s' % (r['public_domain'], token))
     if r['tcp_proxy_domain'] and r['tcp_proxy_port']:
         urls.append('TCP=http://%s:%s/sub/%s' % (r['tcp_proxy_domain'], r['tcp_proxy_port'], token))
-    write('subscription_endpoints.txt', '\n'.join(urls) + ('\n' if urls else ''))
+    endpoint_text = '\n'.join(urls) + ('\n' if urls else '')
+    write('subscription_endpoints.txt', endpoint_text)
+    # Backward-compatible filename for existing operational checks/scripts.
+    write('subscription_url.txt', endpoint_text)
 
     expected = 4 if r['public_domain'] and r['tcp_proxy_domain'] and r['tcp_proxy_port'] else 1
     if len(nodes) != expected:
