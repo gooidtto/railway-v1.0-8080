@@ -61,6 +61,8 @@ HTTPS Generate Domain 另外提供：
 ```text
 Railway Domain :443
         ↓
+Railway Edge TLS termination
+        ↓
 Gateway :8080
         ↓
 XHTTP + TLS
@@ -125,30 +127,6 @@ shared manifest/runtime
 Xray + Gateway + Subscription
 ```
 
-### 动态端口示例
-
-第一次启动：
-
-```text
-Gateway              :8080
-XHTTP REALITY        127.0.0.1:18321
-Vision REALITY       127.0.0.1:24173
-gRPC REALITY         127.0.0.1:31642
-XHTTP TLS            127.0.0.1:15491
-```
-
-下一次启动可以变成：
-
-```text
-Gateway              :8080
-XHTTP REALITY        127.0.0.1:28731
-Vision REALITY       127.0.0.1:15427
-gRPC REALITY         127.0.0.1:32764
-XHTTP TLS            127.0.0.1:19243
-```
-
-客户端完全不需要知道这些变化，因为公网仍然只连接当前 Railway Domain 或 TCP Proxy。
-
 ## 四层 Runtime Pipeline
 
 ```text
@@ -184,6 +162,72 @@ Railway Runtime
 ```
 
 `port_allocator.py` 是运行时内部资源分配层；公网 Railway discovery 与协议配置仍保持职责分离。
+
+## Xray 4 节点
+
+默认生成：
+
+```text
+① VLESS + XHTTP + TLS
+② VLESS + XHTTP + REALITY
+③ VLESS + RAW/TCP + REALITY + Vision
+④ VLESS + gRPC + REALITY
+```
+
+REALITY 仅使用 Xray 官方支持的 RAW、XHTTP、gRPC 组合；Vision 使用 `xtls-rprx-vision`。citeturn0search0turn1search0
+
+### VLESS Encryption：默认关闭
+
+为了最大化客户端兼容性，母版默认使用标准：
+
+```text
+VLESS decryption = none
+客户端 URI 不包含 encryption=mlkem...
+```
+
+Xray 官方文档要求 VLESS 的 `decryption` 明确写成 `none` 才表示关闭 VLESS Encryption。citeturn0search3turn0search4
+
+只有明确设置：
+
+```text
+ENABLE_VLESS_ENCRYPTION=true
+```
+
+才会执行 `xray vlessenc` 并把 ML-KEM VLESS Encryption 写入服务端和订阅。这样不会让普通客户端默认承担额外的 VLESS Encryption 兼容性要求。
+
+## REALITY profile
+
+每个 REALITY 协议使用一个严格的一对一 profile：
+
+```text
+SNI == serverNames == camouflage target hostname
+```
+
+Xray 官方说明 `target` 是服务端 REALITY 的必填项，而 `serverNames` 是客户端可使用的 SNI；通常应与 target 保持一致。citeturn0search1
+
+XHTTP、Vision、gRPC 三组 SNI 必须互斥。重复 SNI 或缺失协议池会阻止启动，而不是产生一个错误路由的“假稳定”实例。
+
+## 订阅完整性保护
+
+`subscription_generator.py` 现在在写入后立即执行 Base64 round-trip 自检：
+
+```text
+4 个 VLESS URI
+      ↓
+UTF-8
+      ↓
+Base64
+      ↓
+立即解码
+      ↓
+逐行比对原始 URI
+```
+
+只有自检通过才会继续启动。
+
+启动 Gateway 后还会通过 `127.0.0.1:8080/sub/<token>` 再验证一次实际 HTTP 响应体与 `/data/subscription.txt` 完全一致。
+
+因此“文件存在但订阅为空 / Base64 损坏 / token 路径错误”会在 Railway 日志中直接失败，而不是让客户端表现为模糊的“订阅无信息”。
 
 ## 1. runtime-discovery
 
@@ -235,31 +279,15 @@ VLESS + gRPC + REALITY
 
 UUID、REALITY key、Short ID 等身份保存到 `/data`；Railway 网络地址与 Xray 身份完全分离。
 
-REALITY profile 要求：
-
-```text
-SNI == serverNames == camouflage target hostname
-```
-
-并且 XHTTP、Vision、gRPC 三组 SNI 必须互斥。重复 SNI 或缺失协议池会阻止启动，而不是产生一个错误路由的“假稳定”实例。
-
 生成的 `/data/xray-manifest.json` 同时记录：
 
 - 当前 UUID / public key / short ID
 - 三组 REALITY profile
 - 当前动态 localhost listener ports
 - XHTTP / gRPC transport 参数
+- VLESS Encryption 是否启用
 
 ## 4. subscription-generator
-
-每个协议只产生 **1 个节点**，总计 **4 个节点**：
-
-```text
-① VLESS + XHTTP + TLS
-② VLESS + XHTTP + REALITY
-③ VLESS + RAW/TCP + REALITY + Vision
-④ VLESS + gRPC + REALITY
-```
 
 公网节点只使用：
 
@@ -284,6 +312,14 @@ TCP Proxy Domain :Railway random port
 /data/subscription_endpoints.txt
 /data/subscription_url.txt
 ```
+
+订阅地址只使用：
+
+```text
+https://<Railway Generate Domain>/sub/<token>
+```
+
+TCP Proxy 地址只作为 VLESS 节点 endpoint，不作为第二个订阅源。
 
 ## 5. gateway-router
 
@@ -334,7 +370,7 @@ port-allocator
   ↓
 xray-config-generator
   ↓
-subscription-generator
+subscription-generator + Base64 self-check
   ↓
 xray -test
   ↓
@@ -346,10 +382,12 @@ xray -test
   ↓
 Gateway bind/readiness
   ↓
+实际 GET /sub/<token> 本地回环检查
+  ↓
 READY
 ```
 
-如果任意一个 Xray listener 无法启动，Gateway 不会进入 READY。
+如果任意一个 Xray listener、Gateway 或订阅回环检查失败，实例不会进入 READY。
 
 ## 部署流程
 
@@ -378,6 +416,8 @@ runtime-discovery
       ↓
 Gateway + Xray ready
 ```
+
+Railway 的公共 Domain 负责 HTTP/HTTPS；TCP Proxy 负责原始 TCP。Railway 官方文档也明确说明 TCP Proxy 会生成独立的 proxy domain/port，并把该流量转发到指定 application port；HTTP 公网 Domain 则由 Railway Edge 处理 TLS。citeturn2search0turn2search1turn2search2
 
 **没有自己的 Custom Domain 时，到这里就结束。**
 
@@ -431,6 +471,7 @@ REALITY_FINGERPRINT=chrome
 XHTTP_PATH=/xhttp
 XHTTP_MODE=auto
 GRPC_SERVICE_NAME=grpc
+ENABLE_VLESS_ENCRYPTION=false   # 默认等价于关闭；推荐保持关闭
 CUSTOM_DOMAIN=<可选>
 GRPC_DOMAIN=<可选>
 ```
