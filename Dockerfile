@@ -18,26 +18,23 @@ COPY site/ /opt/xray/site/
 RUN chmod 0755 /usr/local/bin/xray /opt/xray/scripts/*.sh /opt/xray/scripts/*.py \
     && chmod 0644 /opt/xray/config/reality-sni-candidates.txt /opt/xray/site/*
 
-# Railway supplies PORT and, when configured, the public/TCP networking values.
-# No deployment-specific Railway hostname or random external port is embedded.
+# Railway networking contract: Gateway is the only application listener that
+# is externally targeted. Xray listener ports are allocated at runtime and
+# are intentionally NOT exposed or configured as fixed environment values.
 ENV PORT=8080 \
-    XRAY_XHTTP_REALITY_PORT=10087 \
-    XRAY_XHTTP_TLS_PORT=10086 \
-    XRAY_VISION_REALITY_PORT=10085 \
-    XRAY_GRPC_REALITY_PORT=10088 \
     XRAY_LOGLEVEL=warning \
     DATA_DIR=/data \
     XRAY_CONFIG=/etc/xray/config.json \
-    REALITY_TARGET=www.cloudflare.com:443 \
     REALITY_FINGERPRINT=chrome \
     XHTTP_PATH=/xhttp \
     XHTTP_MODE=auto \
     GRPC_SERVICE_NAME=grpc \
+    ENABLE_VLESS_ENCRYPTION=false \
     REALITY_SNI_CANDIDATES_FILE=/opt/xray/config/reality-sni-candidates.txt \
     SUBSCRIPTION_FILE=/data/subscription.txt \
     SUBSCRIPTION_TOKEN_FILE=/data/subscription_token.txt
 
-EXPOSE 8080 10085 10086 10087 10088
+EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=5 \
     CMD python3 -c "import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:%s/health' % os.getenv('PORT','8080'), timeout=3).read()"
